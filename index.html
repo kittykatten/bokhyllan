@@ -434,6 +434,7 @@ async function maybeEnrich(){
     if(/^\s*audrain\.?\s*,?\s*a\.?\s*$/i.test(b.author||"")) put(b,{author:"Ashley Audrain", seriesTried:true, wdSeries:null});
     if(b.status==="Backlog") put(b,{status:""});
     if(/^nedladdad$/i.test(String(b.source||"").trim())) put(b,{source:"Lokal fil"});
+    if(/kingfisher/i.test(b.author||"") && /^hemlock and silver$/i.test(String(b.title).trim())) put(b,{title:"Hemlock & Silver"});
     if(b.dropped && DROP_RENAME[b.dropped.reason]) put(b,{dropped:{...b.dropped, reason:DROP_RENAME[b.dropped.reason]}});
     if(phase(b)==="dnf" && !b.dropped && !b.droppedGuessed){ const fl=b.extra&&b.extra.Flyttad?parseDate(b.extra.Flyttad):""; put(b,{dropped:{date:/^\d{4}-\d{2}-\d{2}$/.test(fl)?fl:"", reason:guessDropReason(b)}, droppedGuessed:true}); }
     if(!b.libby && b.extra && b.extra.Bi){ const v=String(b.extra.Bi).trim().toLowerCase(); const m=v==="yes"?"ja":(v==="no"||v==="not")?"nej":v==="notify"?"notify":""; if(m) put(b,{libby:m}); }
@@ -1002,7 +1003,7 @@ function homeView(){
     <div class="tile"><div class="v">${fmtN(yp)}</div><div class="l">sidor ${Y}</div>${delta(yp,lp)}</div>
     <div class="tile"><div class="v">${planRead} / ${plan.length}</div><div class="l">av ${MON_SV_LONG[M]}s plan lästa</div></div>
   </div>
-  ${nIssues?`<a class="notice" href="#stada" style="text-decoration:none;color:inherit;display:block">Du har ${nIssues} saker i Inkorgen att titta pås. <b>Gå till Städa →</b></a>`:""}
+  ${nIssues?`<a class="notice" href="#stada" style="text-decoration:none;color:inherit;display:block">Du har ${nIssues} ${nIssues===1?"sak":"saker"} i Inkorgen. <b>Gå till Inkorgen →</b></a>`:""}
   <div class="hgrid">
     <div class="card"><div class="sec-h"><h3>Läser nu</h3><span class="muted small">${reading.length}</span></div>
       ${reading.length?reading.map(b=>miniRow(b,`${authorLink(b.author)} · började ${esc(fmtDate(b.started))}`)).join(""):`<p class="muted small">Inget just nu. <a href="#nasta">Hitta nästa bok</a></p>`}</div>
@@ -1346,7 +1347,7 @@ function showLibby(b){ return !isBok(b) && !["Lokal fil","Köpt","Lånad"].inclu
 function showLoan(b){ return !isBok(b) && b.status==="Lånad" && b.source!=="Lokal fil"; }
 // New books by authors read in the last year (Open Library + publishers, checked 2026-11-24). Shown in Inkorg until added or declined.
 const NEW_BOOKS=[
- ["T. Kingfisher","Hemlock and Silver",2025],["T. Kingfisher","Snake-Eater",2025],
+ ["T. Kingfisher","Hemlock & Silver",2025],["T. Kingfisher","Snake-Eater",2025],
  ["Fredrik Backman","Mina vänner",2025,"Svenska"],
  ["Ruth Ware","Zero Days",2023],["Ruth Ware","One Perfect Couple",2024],["Ruth Ware","The Woman in Suite 11",2025],
  ["Josh Silver","HappyHead",2023],["Josh Silver","Dead Happy",2024],["Josh Silver","Traumaland",2025],
@@ -1366,10 +1367,11 @@ const NEW_BOOKS=[
  ["Annalee Newitz","Stories Are Weapons",2024],
  ["Ocean Vuong","The Emperor of Gladness",2025],
 ];
+function nbKey(t){ return norm(String(t).replace(/&/g," and ")).replace(/^(the|a|an) /,""); }
 function newBookList(){
-  const IG=S.cleanIgnore||{}; const have=new Set(S.books.map(b=>norm(b.title).replace(/^(the|a|an) /,"")));
+  const IG=S.cleanIgnore||{}; const have=new Set(S.books.map(b=>nbKey(b.title)));
   return NEW_BOOKS.map(([author,title,year,lang])=>({author,title,year,lang:lang||"Engelska",key:"p:new:"+norm(author)+"|"+norm(title)}))
-    .filter(n=>!IG[n.key] && !have.has(norm(n.title).replace(/^(the|a|an) /,"")));
+    .filter(n=>!IG[n.key] && !IG["p:new:"+norm(n.author)+"|"+norm(n.title.replace(/&/g,"and"))] && !have.has(nbKey(n.title)));
 }
 function newBooksSection(){
   const l=newBookList(); if(!l.length) return "";
