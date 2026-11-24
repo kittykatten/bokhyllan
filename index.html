@@ -1061,7 +1061,7 @@ function miniRow(b, sub){ return `<div class="mini" data-book="${esc(b.id)}" rol
 function homeView(){
   const now=new Date(); const Y=now.getFullYear(); const M=now.getMonth();
   const reading=S.books.filter(b=>phase(b)==="reading").sort((a,b)=>String(b.started).localeCompare(String(a.started)));
-  const loans=S.books.filter(b=>LOAN_ST.includes(b.status) && phase(b)!=="read" && phase(b)!=="dnf").sort((a,b)=>String(a.due||"9").localeCompare(String(b.due||"9")));
+  const loans=S.books.filter(b=>LOAN_ST.includes(b.status) && phase(b)==="tbr").sort((a,b)=>String(a.due||"9").localeCompare(String(b.due||"9")));
   const holds=S.books.filter(b=>HOLD_ST.includes(b.status) && phase(b)==="tbr");
   const {books,pages,nov}=monthCounts(); const sum=(a,n=12)=>(a||[]).slice(0,n).reduce((x,y)=>x+y,0);
   const yb=sum(books[Y]), yp=sum(pages[Y]), lb=sum(books[Y-1],M+1), lp=sum(pages[Y-1],M+1), yn=sum(nov[Y]);
@@ -1081,7 +1081,7 @@ function homeView(){
   ${nIssues?`<a class="notice" href="#stada" style="text-decoration:none;color:inherit;display:block">Du har ${nIssues} ${nIssues===1?"sak":"saker"} i Inkorgen. <b>Gå till Inkorgen →</b></a>`:""}
   <div class="hgrid">
     <div class="card"><div class="sec-h"><h3>Läser nu</h3><span class="muted small">${reading.length}</span></div>
-      ${reading.length?reading.map(b=>miniRow(b,`${authorLink(b.author)} · började ${esc(fmtDate(b.started))}`)).join(""):`<p class="muted small">Inget just nu. <a href="#bocker">Hitta nästa bok</a></p>`}</div>
+      ${reading.length?reading.map(b=>miniRow(b,`${authorLink(b.author)} · började ${esc(fmtDate(b.started))}${LOAN_ST.includes(b.status)&&b.due?" · "+dueTxt(b):""}`)).join(""):`<p class="muted small">Inget just nu. <a href="#bocker">Hitta nästa bok</a></p>`}</div>
     <div class="card"><div class="sec-h"><h3>Lån</h3><span class="muted small">${loans.length}</span></div>
       ${loans.length?loans.map(b=>miniRow(b,dueTxt(b))).join(""):`<p class="muted small">Inga lånade böcker.</p>`}</div>
     <div class="card"><div class="sec-h"><h3>I kö</h3><span class="muted small">${holds.length}</span></div>
