@@ -102,6 +102,9 @@ input[type=search]{flex:1;min-width:180px}
 .tile.click{cursor:pointer} .tile.click:hover{border-color:var(--accent)}
 .drop-over{outline:2px dashed var(--accent);outline-offset:2px;background:var(--accent-soft)}
 [draggable="true"]{cursor:grab}
+.recs{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.rec{border:1px solid var(--line);border-radius:10px;padding:10px 12px} .rec[data-drill]{cursor:pointer} .rec[data-drill]:hover{border-color:var(--accent)}
+.rec .t{font-weight:600;margin:2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .legend{display:flex;gap:14px;font-size:13px;color:var(--muted);margin-top:4px} .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 .chart .bar:hover{opacity:.8}
 .chart .grid{stroke:var(--line)}
@@ -1682,14 +1685,37 @@ function statsView(){
   const dec=b=>{ const y=+b.year; if(!y) return ""; if(y<1920) return "före 1920"; return Math.floor(y/10)*10+"-talet"; };
   const decEntries = tally(base,dec,20).sort((a,b)=>(a[0]==="före 1920"?0:parseInt(a[0]))-(b[0]==="före 1920"?0:parseInt(b[0])));
   const gl=GENDER;
-  const DIM={lang:b=>langName(b.lang), orig:b=>langName(b.origLang), gender:b=>gl[b.gender]||"", dec, genre:b=>genresOf(b), source:b=>b.source, rating:b=>b.rating?String(Math.round(+b.rating)):""};
-  const T={lang:"Språk jag läste på", orig:"Originalspråk", gender:"Författarens kön", dec:"Utgivningsdecennium", genre:"Genre", source:"Källa", rating:"Betyg", rated:"Betygsatta böcker "+sel};
+  const DIM={author:b=>String(b.author||"").replace(/\s+/g," ").trim(), lang:b=>langName(b.lang), orig:b=>langName(b.origLang), gender:b=>gl[b.gender]||"", dec, genre:b=>genresOf(b), source:b=>b.source, rating:b=>b.rating?String(Math.round(+b.rating)):""};
+  const T={author:"Författare", rec:"Rekord", lang:"Språk jag läste på", orig:"Originalspråk", gender:"Författarens kön", dec:"Utgivningsdecennium", genre:"Genre", source:"Källa", rating:"Betyg", rated:"Betygsatta böcker "+sel};
+  // Records. Days are counted inclusive (start and finish the same day = 1 day).
+  const ISOd=/^\d{4}-\d{2}-\d{2}$/; const dd=(a,b)=>Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/864e5);
+  const spanOk=b=>ISOd.test(b.started||"")&&ISOd.test(b.read||"")&&b.read>=b.started&&+b.pages>0;
+  const listOk=b=>ISOd.test(b.added||"")&&ISOd.test(b.read||"")&&b.read>=b.added;
+  const REC={
+    fast:{t:"Snabbast läst", ok:spanOk, v:b=>+b.pages/(dd(b.started,b.read)+1), desc:true, f:b=>Math.round(+b.pages/(dd(b.started,b.read)+1))+" sidor/dag ("+(dd(b.started,b.read)+1)+" d)"},
+    slow:{t:"Långsammast läst", ok:spanOk, v:b=>+b.pages/(dd(b.started,b.read)+1), desc:false, f:b=>(+b.pages/(dd(b.started,b.read)+1)).toLocaleString("sv-SE",{maximumFractionDigits:1})+" sidor/dag ("+(dd(b.started,b.read)+1)+" d)"},
+    long:{t:"Längsta bok", ok:b=>+b.pages>0, v:b=>+b.pages, desc:true, f:b=>b.pages+" sidor"},
+    short:{t:"Kortaste bok", ok:b=>+b.pages>0, v:b=>+b.pages, desc:false, f:b=>b.pages+" sidor"},
+    listlong:{t:"Längst tid på listan", ok:listOk, v:b=>dd(b.added,b.read), desc:true, f:b=>ageText(Math.floor(dd(b.added,b.read)/30.44))+" ("+dd(b.added,b.read)+" d)"},
+    listshort:{t:"Kortast tid på listan", ok:listOk, v:b=>dd(b.added,b.read), desc:false, f:b=>dd(b.added,b.read)+" dagar"},
+  };
+  const recTop=k=>{ const r=REC[k]; return base.filter(r.ok).sort((a,b)=>(r.v(a)-r.v(b))*(r.desc?-1:1)); };
+  // Best month and longest gap between finishing one book and starting the next.
+  const monthBest=(()=>{ let best=null; for(const [y,arr] of Object.entries(books)){ if(scope==="year"&&+y!==sel) continue; arr.forEach((v,m)=>{ if(v && (!best||v>best.v)) best={v,l:MON_SV_LONG[m]+" "+y}; }); } return best; })();
+  const gap=(()=>{ const r=base.filter(b=>ISOd.test(b.read||"")).sort((a,b)=>a.read.localeCompare(b.read)); let best=null;
+    for(let i=1;i<r.length;i++){ const st=ISOd.test(r[i].started||"")?r[i].started:r[i].read; const g=dd(r[i-1].read,st); if(g>0&&(!best||g>best.g)) best={g,from:r[i-1],to:r[i]}; } return best; })();
+  const recCard=`<div class="card"><div class="sec-h"><h3>Rekord</h3><span class="muted small">${scope==="year"?sel:"alla år"}</span></div>
+    <div class="recs">${Object.entries(REC).map(([k,r])=>{ const top=recTop(k)[0]; return top?`<div class="rec" data-drill="rec|${k}" role="button" tabindex="0" title="Visa topplistan"><div class="muted small">${esc(r.t)}</div><div class="t">${esc(top.title)}</div><div class="small">${esc(r.f(top))}</div></div>`:""; }).join("")}
+    ${monthBest?`<div class="rec"><div class="muted small">Flest böcker på en månad</div><div class="t">${monthBest.v} böcker</div><div class="small">${esc(monthBest.l)}</div></div>`:""}
+    ${gap?`<div class="rec"><div class="muted small">Längsta uppehåll</div><div class="t">${gap.g} dagar</div><div class="small">efter ${esc(gap.from.title)}, ${esc(fmtDate(gap.from.read))}</div></div>`:""}</div>
+    <p class="muted small" style="margin-bottom:0">Klicka på ett rekord för att se topplistan. Läshastighet kräver startdatum, slutdatum och sidantal. Tid på listan räknas från Tillagd till Läst klart.</p></div>`;
   let drill="";
-  if(S.statDrill){ const [id,key]=S.statDrill.split("|"); let list;
-    if(id==="rated") list=rated.slice().sort((a,b)=>b.rating-a.rating||String(b.read).localeCompare(String(a.read)));
+  if(S.statDrill){ const [id,key]=S.statDrill.split("|"); let list; let recF=null;
+    if(id==="rec" && REC[key]){ list=recTop(key).slice(0,25); recF=REC[key].f; }
+    else if(id==="rated") list=rated.slice().sort((a,b)=>b.rating-a.rating||String(b.read).localeCompare(String(a.read)));
     else if(DIM[id]){ list=base.filter(b=>{ const v=DIM[id](b); return Array.isArray(v)?v.includes(key):String(v)===key; }).sort((a,b)=>(+b.rating||0)-(+a.rating||0)||String(b.read).localeCompare(String(a.read))); }
-    if(list) drill=`<div class="card" id="drill"><div class="sec-h"><h3>${esc(T[id]||"")}${id==="rated"?"":": "+esc(id==="rating"?stars(+key)+" ("+key+")":key)}</h3><span class="row" style="gap:8px"><span class="muted small">${list.length} böcker</span><button class="btn small" data-drill="${esc(S.statDrill)}">Stäng</button></span></div>
-      ${list.length?`<div class="list">${list.map((b,i)=>id==="rated"?bookRow(b).replace('<div class="item"',`<div class="item" style="position:relative"`).replace('<span class="stripe',`<span class="muted small" style="min-width:1.6em;text-align:right">${i+1}.</span><span class="stripe`):bookRow(b)).join("")}</div>`:`<p class="muted small">Inga böcker.</p>`}</div>`; }
+    if(list) drill=`<div class="card" id="drill"><div class="sec-h"><h3>${esc(T[id]||"")}${id==="rated"?"":": "+esc(id==="rating"?stars(+key)+" ("+key+")":id==="rec"?REC[key].t:key)}</h3><span class="row" style="gap:8px"><span class="muted small">${list.length} böcker</span><button class="btn small" data-drill="${esc(S.statDrill)}">Stäng</button></span></div>
+      ${list.length?`<div class="list">${list.map((b,i)=>id==="rated"||id==="rec"?bookRow(b).replace('<div class="m">',recF?`<div class="m"><b>${esc(recF(b))}</b> · `:'<div class="m">').replace('<div class="item"',`<div class="item" style="position:relative"`).replace('<span class="stripe',`<span class="muted small" style="min-width:1.6em;text-align:right">${i+1}.</span><span class="stripe`):bookRow(b)).join("")}</div>`:`<p class="muted small">Inga böcker.</p>`}</div>`; }
   return `
   <div class="row"><h2 class="grow" style="font-size:22px">Statistik</h2>
     <select id="statYear" aria-label="År">${years.slice().reverse().map(y=>`<option ${y===sel?"selected":""}>${y}</option>`).join("")}</select></div>
@@ -1714,8 +1740,9 @@ function statsView(){
     <div class="card"><div class="sec-h"><h3>Utgivningsdecennium</h3></div>${hbars(decEntries,base.length,"dec")}</div>
     <div class="card"><div class="sec-h"><h3>Genre</h3></div>${hbars(tally(base.flatMap(b=>genresOf(b).map(g=>({g}))),x=>x.g,10),base.length,"genre")}<p class="muted small">Från Goodreads Choice eller Open Library. En bok kan ha två genrer, och böcker utan uppgift räknas inte.</p></div>
     <div class="card"><div class="sec-h"><h3>Källa</h3></div>${hbars(tally(base,b=>b.source),base.length,"source")}</div>
+    <div class="card"><div class="sec-h"><h3>Mest lästa författare</h3></div>${hbars(tally(base,DIM.author,10),base.length,"author")}</div>
     <div class="card"><div class="sec-h"><h3>Betyg</h3></div>${hbars([5,4,3,2,1].map(r=>[stars(r),base.filter(b=>b.rating&&Math.round(+b.rating)===r).length,String(r)]),base.length,"rating")}<p class="muted small">${base.filter(b=>!b.rating && String(b.read)>=RATING_FROM).length} lästa sedan 2026 utan betyg</p></div>
-  </div>${drill}`:`<div class="empty">Inga lästa böcker med datum ${scope==="year"?sel:""} i appen.</div>`}
+  </div>${recCard}${drill}`:`<div class="empty">Inga lästa böcker med datum ${scope==="year"?sel:""} i appen.</div>`}
   <p class="muted small">Böcker och sidor per månad kommer från fliken Statistik i arket fram till importen, och från läsdatumen i appen efter det. Noveller räknas från böckerna i appen (typ Novell). Sidorna räknas alltid fullt. Fördelningarna bygger på böckerna i appen som har ett läsdatum.</p>`;
 }
 
