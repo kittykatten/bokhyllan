@@ -1348,7 +1348,6 @@ function showLoan(b){ return !isBok(b) && b.status==="Lånad" && b.source!=="Lok
 // New books by authors read in the last year (Open Library + publishers, checked 2026-11-24). Shown in Inkorg until added or declined.
 const NEW_BOOKS=[
  ["T. Kingfisher","Hemlock & Silver",2025],["T. Kingfisher","Snake-Eater",2025],
- ["Fredrik Backman","Mina vänner",2025,"Svenska"],
  ["Ruth Ware","Zero Days",2023],["Ruth Ware","One Perfect Couple",2024],["Ruth Ware","The Woman in Suite 11",2025],
  ["Josh Silver","HappyHead",2023],["Josh Silver","Dead Happy",2024],["Josh Silver","Traumaland",2025],
  ["Freida McFadden","The Housemaid's Secret",2023],["Freida McFadden","The Housemaid Is Watching",2024],["Freida McFadden","The Housemaid's Wedding",2026],["Freida McFadden","Dear Debbie",2026],["Freida McFadden","The Divorce",2026],
@@ -1365,7 +1364,6 @@ const NEW_BOOKS=[
  ["Megan Giddings","Meet Me at the Crossroads",2025],
  ["Amal El-Mohtar","Seasons of Glass and Iron",2026],
  ["Annalee Newitz","Stories Are Weapons",2024],
- ["Ocean Vuong","The Emperor of Gladness",2025],
 ];
 function nbKey(t){ return norm(String(t).replace(/&/g," and ")).replace(/^(the|a|an) /,""); }
 function newBookList(){
