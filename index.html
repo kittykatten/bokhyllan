@@ -205,6 +205,7 @@ const MON_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov
 const MON_SV = ["jan","feb","mar","apr","maj","jun","jul","aug","sep","okt","nov","dec"];
 const MON_SV_LONG = ["januari","februari","mars","april","maj","juni","juli","augusti","september","oktober","november","december"];
 const STATUSES = ["","Ska lånas","Ska köpas","Köpt","Lånad","Lokal fil","Waitlist","On hold","Suspended","Backlog","Kanske","Gav upp"];
+const DROP_REASONS=["Slutade läsa","Lockar inte längre","Har legat för länge","Går inte att få tag på"];
 const PHASE_LABEL = {tbr:"Att läsa", reading:"Läser", read:"Läst", dnf:"Bortvald"};
 const GENRES = ["Skönlitteratur","Historisk roman","Deckare & thriller","Fantasy","Science fiction","Skräck","Facklitteratur"];
 const GC_GENRE = {"fiction":"Skönlitteratur","historical fiction":"Historisk roman","mystery & thriller":"Deckare & thriller","fantasy":"Fantasy","science fiction":"Science fiction","horror":"Skräck"};
@@ -263,7 +264,7 @@ function fmtDate(iso){
 function allReads(b){ return [...(b.reads||[]).map(r=>r&&r.read), b.read].filter(Boolean).sort(); }
 function everRead(b){ return allReads(b).length>0; }
 function phase(b){
-  if(b.kind==="removed" || b.status==="Gav upp") return "dnf";
+  if(b.kind==="removed" || b.status==="Gav upp" || (b.dropped && b.dropped.date)) return "dnf";
   if(b.read) return "read";
   if(b.started) return "reading";
   return "tbr";
@@ -812,7 +813,7 @@ function bookRow(b){
   const meta=[b.year, b.pages?b.pages+" s.":"", b.lang && b.origLang && langName(b.lang)!==langName(b.origLang) ? langName(b.lang)+" (från "+langName(b.origLang)+")" : langName(b.lang), kindOf(b)==="novella"?"novell":""].filter(Boolean).map(esc)
     .concat(sr ? [seriesLink(sr.name, sr.name+(sr.num?" "+numLabel(sr.num):""))+(isAbandoned(sr.name)?" (avbruten serie)":"")] : (b.num?[esc("Serie "+numLabel(b.num)+", namn saknas")]:[])).join(" · ");
   const nr=allReads(b).length;
-  const when = p==="read"?(nr>1?"Läst "+nr+" ggr, senast ":"Läst ")+fmtDate(b.read) : p==="reading"?(b.reread?"Läser om, började ":"Började ")+fmtDate(b.started) : b.reread?"Läsa om"+(b.status?" · "+b.status:"") : b.status||"";
+  const when = p==="dnf"?"Bortvald"+(b.dropped&&b.dropped.reason?" · "+b.dropped.reason:"") : p==="read"?(nr>1?"Läst "+nr+" ggr, senast ":"Läst ")+fmtDate(b.read) : p==="reading"?(b.reread?"Läser om, började ":"Började ")+fmtDate(b.started) : b.reread?"Läsa om"+(b.status?" · "+b.status:"") : b.status||"";
   const lib = p!=="read" && p!=="dnf" && isEpubOrUnknown(b) && (b.libby==="ja"||b.libby==="notify") ? (b.libby==="ja"?"📚 Libby":"🔔 Libby") : "";
   return `<div class="item" data-book="${esc(b.id)}" tabindex="0" role="button">
     <span class="stripe ph-${p}"></span>${coverHtml(b)}
@@ -1222,7 +1223,7 @@ function openBook(id){
   const b = id ? {...S.books.find(x=>x.id===id)} : {kind:"bok",title:"",author:"",added:todayISO(),rating:0,extra:{}};
   if(!b) return;
   if(id && !b.series){ const si=seriesInfo(b); if(si&&si.series){ b.series=si.series; if(!b.num) b.num=si.num; } }
-  S.edit=b; S.found=null; S.editMeta=false; renderModal();
+  S.edit=b; S.found=null; S.editMeta=false; S.dropAsk=false; renderModal();
 }
 function renderModal(){
   const b=S.edit; const m=$("#modal");
@@ -1241,8 +1242,12 @@ function renderModal(){
       ${b.read?`<button class="btn" data-act="reread">Jag vill läsa den igen</button>`:""}
       ${!b.read?`<button class="btn" data-act="start">Börja läsa idag</button>`:""}
       ${!b.read?`<button class="btn" data-act="finish">Markera som läst idag</button>`:""}
-      ${!b.read&&b.status!=="Lånad"&&!isBok(b)&&b.source!=="Lokal fil"?`<button class="btn" data-act="loan">Lånad idag</button>`:""}
-    </div>`:""}
+      ${!b.read&&b.status!=="Lånad"&&!isBok(b)&&b.source!=="Lokal fil"&&phase(b)!=="dnf"?`<button class="btn" data-act="loan">Lånad idag</button>`:""}
+      ${!b.read&&phase(b)!=="dnf"?`<button class="btn" data-act="dropask" aria-expanded="${!!S.dropAsk}">Flytta från listan …</button>`:""}
+      ${phase(b)==="dnf"?`<button class="btn" data-act="undrop">Tillbaka till Att läsa</button>`:""}
+    </div>
+    ${S.dropAsk&&phase(b)!=="dnf"?`<div class="card" style="padding:12px"><div class="small muted" style="margin-bottom:8px">Varför? Boken flyttas till Bortvalda och tas bort ur planen. Du kan alltid ångra.</div><div class="chips">${DROP_REASONS.map(r=>`<button class="chip" data-act="drop" data-reason="${esc(r)}">${esc(r)}</button>`).join("")}</div></div>`:""}
+    ${phase(b)==="dnf"?`<div class="small muted">Bortvald${b.dropped&&b.dropped.date?" "+esc(fmtDate(b.dropped.date)):""}${b.dropped&&b.dropped.reason?" · "+esc(b.dropped.reason):""}</div>`:""}`:""}
     ${b.id&&seriesOf(b)?`<div class="small">Serie: ${seriesLink(seriesOf(b).name, seriesOf(b).name+(seriesOf(b).num?" "+numLabel(seriesOf(b).num):""))}</div>`:""}
     ${(b.reads&&b.reads.length)||b.reread?`<div class="small muted">${b.reread&&!b.read?"<b>Läses om.</b> ":""}${(b.reads||[]).length?"Tidigare läst: "+(b.reads||[]).map(r=>esc(fmtDate(r.read))).join(", "):""}</div>`:""}
     ${b.id?genreBlock(b):""}
@@ -1290,8 +1295,8 @@ function renderModal(){
   </div></div>`;
 }
 // Format → status → source. Saved values outside the lists are kept and shown.
-const EPUB_ST=["","Ska lånas","Waitlist","On hold","Suspended","Lånad","Lokal fil","Kanske","Backlog","Gav upp"];
-const BOK_ST=["","Ska köpas","Köpt","Lånad","Kanske","Backlog","Gav upp"];
+const EPUB_ST=["","Ska lånas","Waitlist","On hold","Suspended","Lånad","Lokal fil","Kanske","Backlog"];
+const BOK_ST=["","Ska köpas","Köpt","Lånad","Kanske","Backlog"];
 function isBok(b){ return String(b.format||"").trim().toLowerCase()==="bok"; }
 function statusOpts(b){ const l=isBok(b)?BOK_ST:EPUB_ST; return b.status&&!l.includes(b.status)?[...l,b.status]:l; }
 function sourceOpts(b){
@@ -1775,10 +1780,14 @@ document.addEventListener("click", async e=>{
       case "pick": { const ids=[...document.querySelectorAll("#main [data-book]")].map(x=>x.dataset.book); if(ids.length){ S.pickId=ids[Math.floor(Math.random()*ids.length)]; render(); $("#main").scrollTop=0; } return; }
       case "close": case "close-bg": stopScan(); S.edit=null; S.confirmDel=false; renderModal(); return;
       case "save": saveBook(); return;
+      case "dropask": { readForm(); S.dropAsk=!S.dropAsk; renderModal(); return; }
+      case "drop": { readForm(); const e=S.edit; e.dropped={date:todayISO(), reason:t.dataset.reason||""}; if(e.status==="Gav upp") e.status=""; e.plan=""; S.dropAsk=false;
+        saveBook(true).then(()=>toast("Flyttad till Bortvalda: "+(e.dropped.reason||"")+".")); return; }
+      case "undrop": { readForm(); const e=S.edit; e.dropped=null; if(e.status==="Gav upp") e.status=""; if(e.kind==="removed") e.kind="bok"; saveBook(false).then(()=>{ renderModal(); toast("Tillbaka bland Att läsa."); }); return; }
       case "reread": { readForm(); const e=S.edit; e.reads=[...(e.reads||[]), {started:e.started||"", read:e.read}]; e.started=""; e.read=""; e.reread=true; saveBook(false).then(()=>{ renderModal(); toast("Boken ligger nu bland Att läsa som omläsning. Tidigare läsning finns kvar i statistiken."); }); return; }
       case "loan": readForm(); S.edit.status="Lånad"; S.edit.loaned=todayISO(); saveBook(false).then(()=>{ renderModal(); toast(loanDays(S.edit)?"Lånad idag. Lämnas tillbaka "+fmtDate(addDaysISO(S.edit.loaned,loanDays(S.edit)))+".":"Lånad idag. Välj källa så räknas återlämningsdatumet ut."); }); return;
-      case "start": readForm(); S.edit.started=todayISO(); if(S.edit.status==="Gav upp") S.edit.status=""; saveBook(); return;
-      case "finish": readForm(); S.edit.read=todayISO(); S.edit.reread=false; if(!S.edit.started) S.edit.started=todayISO(); if(S.edit.status==="Gav upp") S.edit.status=""; saveBook(false).then(()=>{ renderModal(); toast("Markerad som läst. Sätt gärna ett betyg."); }); return;
+      case "start": readForm(); S.edit.dropped=null; S.edit.started=todayISO(); if(S.edit.status==="Gav upp") S.edit.status=""; saveBook(); return;
+      case "finish": readForm(); S.edit.dropped=null; S.edit.read=todayISO(); S.edit.reread=false; if(!S.edit.started) S.edit.started=todayISO(); if(S.edit.status==="Gav upp") S.edit.status=""; saveBook(false).then(()=>{ renderModal(); toast("Markerad som läst. Sätt gärna ett betyg."); }); return;
       case "del": S.confirmDel=true; readForm(); renderModal(); return;
       case "del-no": S.confirmDel=false; readForm(); renderModal(); return;
       case "del-yes": { const b=S.edit; try{ await removeItem(b.id,b._doc); toast("Borttagen"); S.edit=null; S.confirmDel=false; renderModal(); }catch(_){} return; }
