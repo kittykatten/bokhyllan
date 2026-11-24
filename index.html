@@ -1693,12 +1693,12 @@ function statsView(){
   const spanOk=b=>ISOd.test(b.started||"")&&ISOd.test(b.read||"")&&b.read>=b.started&&+b.pages>0;
   const listOk=b=>ISOd.test(b.added||"")&&ISOd.test(b.read||"")&&b.read>=b.added;
   const REC={
-    fast:{t:"Snabbast läst", ok:spanOk, v:b=>+b.pages/(dd(b.started,b.read)+1), desc:true, f:b=>Math.round(+b.pages/(dd(b.started,b.read)+1))+" sidor/dag ("+(dd(b.started,b.read)+1)+" d)"},
-    slow:{t:"Långsammast läst", ok:spanOk, v:b=>+b.pages/(dd(b.started,b.read)+1), desc:false, f:b=>(+b.pages/(dd(b.started,b.read)+1)).toLocaleString("sv-SE",{maximumFractionDigits:1})+" sidor/dag ("+(dd(b.started,b.read)+1)+" d)"},
     long:{t:"Längsta bok", ok:b=>+b.pages>0, v:b=>+b.pages, desc:true, f:b=>b.pages+" sidor"},
     short:{t:"Kortaste bok", ok:b=>+b.pages>0, v:b=>+b.pages, desc:false, f:b=>b.pages+" sidor"},
-    listlong:{t:"Längst tid på listan", ok:listOk, v:b=>dd(b.added,b.read), desc:true, f:b=>ageText(Math.floor(dd(b.added,b.read)/30.44))+" ("+dd(b.added,b.read)+" d)"},
+    fast:{t:"Snabbast läst", ok:spanOk, v:b=>+b.pages/(dd(b.started,b.read)+1), desc:true, f:b=>Math.round(+b.pages/(dd(b.started,b.read)+1))+" sidor/dag ("+(dd(b.started,b.read)+1)+" d)"},
+    slow:{t:"Långsammast läst", ok:spanOk, v:b=>+b.pages/(dd(b.started,b.read)+1), desc:false, f:b=>(+b.pages/(dd(b.started,b.read)+1)).toLocaleString("sv-SE",{maximumFractionDigits:1})+" sidor/dag ("+(dd(b.started,b.read)+1)+" d)"},
     oldest:{t:"Längst resa i tiden", ok:b=>+b.year>0&&ISOd.test(b.read||""), v:b=>+b.read.slice(0,4)-+b.year, desc:true, f:b=>"utgiven "+b.year+", läst "+(+b.read.slice(0,4)-+b.year)+" år senare"},
+    listlong:{t:"Längst tid på listan", ok:listOk, v:b=>dd(b.added,b.read), desc:true, f:b=>ageText(Math.floor(dd(b.added,b.read)/30.44))+" ("+dd(b.added,b.read)+" d)"},
     listshort:{t:"Kortast tid på listan", ok:listOk, v:b=>dd(b.added,b.read), desc:false, f:b=>dd(b.added,b.read)+" dagar"},
   };
   const recTop=k=>{ const r=REC[k]; return base.filter(r.ok).sort((a,b)=>(r.v(a)-r.v(b))*(r.desc?-1:1)); };
