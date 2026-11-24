@@ -374,6 +374,11 @@ async function maybeEnrich(){
     // A comment that only says "EPUB": drop it when Format agrees (or is empty); conflicts go to Städa.
     if(/^\s*epub\.?\s*$/i.test(b.comment||"")){ const f=String(b.format||"").trim().toUpperCase();
       if(!f) put(b,{comment:"", format:"EPUB"}); else if(f==="EPUB") put(b,{comment:""}); }
+    // Harry Potter: series and number from the title (English and Swedish titles).
+    if(/^harry potter/i.test(String(b.title).trim()) && /rowling/i.test(b.author||"") && !b.series){
+      const t=String(b.title).toLowerCase();
+      const order=[[/stone|vises sten/,1],[/chamber|hemligheternas kammare/,2],[/azkaban/,3],[/goblet|flammande bägaren/,4],[/phoenix|fenixorden/,5],[/half-blood|halvblodsprinsen/,6],[/deathly|dödsrelikerna/,7],[/cursed child|fördömda barnet/,8]];
+      const hit=order.find(([re])=>re.test(t)); put(b,{series:"Harry Potter", num:hit?String(hit[1]):(b.num?firstNum(b.num):"")}); }
     // Corrections Kitty has given by hand.
     if(/natt och dag/i.test(b.author||"") && /^179[345]$/.test(String(b.title).trim()) && !b.series) put(b,{series:"Bellman Noir Trilogy", num:String(+String(b.title).trim()-1792)});
     // Language codes -> names ("Chn" -> "Kinesiska"), whitespace, gender, odd dates.
