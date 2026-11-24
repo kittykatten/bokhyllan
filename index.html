@@ -1692,8 +1692,8 @@ function statsView(){
   const ISOd=/^\d{4}-\d{2}-\d{2}$/; const dd=(a,b)=>Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/864e5);
   // Exact dates are only reliable from 2024; 2016–2023 have month precision; 2014–2015 only the year.
   // Before Sep 2023 only the month is known, and Tillagd is month-based throughout: a date on the 1st is treated as "some day that month".
-  const DATES_FROM="2023-09-01", MONTHS_FROM=2016;
-  const exactDay=(d,kind)=>ISOd.test(d||"") && d>=DATES_FROM && (d.slice(8)!=="01" || (kind!=="added" && d>="2024-01-01"));
+  const DATES_FROM="2024-09-01", MONTHS_FROM=2016;
+  const exactDay=(d,kind)=>ISOd.test(d||"") && d>=DATES_FROM && (d.slice(8)!=="01" || kind!=="added");
   const spanOk=b=>exactDay(b.started)&&exactDay(b.read)&&b.read>=b.started&&+b.pages>0;
   const listOk=b=>exactDay(b.added,"added")&&exactDay(b.read)&&b.read>=b.added;
   const listMonthOk=b=>ISOd.test(b.added||"")&&ISOd.test(b.read||"")&&+b.added.slice(0,4)>=MONTHS_FROM&&b.read>=b.added;
@@ -1717,7 +1717,7 @@ function statsView(){
     ${monthBest?`<div class="rec"><div class="muted small">Flest böcker på en månad</div><div class="t">${monthBest.v} böcker</div><div class="small">${esc(monthBest.l)}</div></div>`:""}
     ${pagesBest?`<div class="rec"><div class="muted small">Flest sidor på en månad</div><div class="t">${fmtN(pagesBest.v)} sidor</div><div class="small">${esc(pagesBest.l)}</div></div>`:""}
     ${gap?`<div class="rec"><div class="muted small">Längsta uppehåll</div><div class="t">${gap.g} dagar</div><div class="small">efter ${esc(gap.from.title)}, ${esc(fmtDate(gap.from.read))}</div></div>`:""}</div>
-    <p class="muted small" style="margin-bottom:0">Klicka på ett rekord för att se topplistan. Läshastighet, kortast tid på listan och uppehåll räknas bara på exakta datum (från hösten 2023, och datum den 1:a räknas som osäkra). Längst tid på listan och bästa månad räknas på månad från 2016.</p></div>`;
+    <p class="muted small" style="margin-bottom:0">Klicka på ett rekord för att se topplistan. Läshastighet, kortast tid på listan och uppehåll räknas bara på exakta datum (från september 2024; Tillagd den 1:a räknas som osäkert). Längst tid på listan och bästa månad räknas på månad från 2016.</p></div>`;
   let drill="";
   if(S.statDrill){ const [id,key]=S.statDrill.split("|"); let list; let recF=null;
     if(id==="rec" && REC[key]){ list=recTop(key).slice(0,25); recF=REC[key].f; }
@@ -1736,7 +1736,7 @@ function statsView(){
     <div class="tile"><div class="v">${((yBooks-yNov)/monthsGone).toLocaleString("sv-SE",{maximumFractionDigits:1})}</div><div class="l">${yNov?"romaner":"böcker"} per månad</div></div>
     <div class="tile${rated.length?" click":""}" ${rated.length?`data-drill="rated|" role="button" tabindex="0" title="Visa alla betygsatta böcker ${sel}, rankade"`:""}><div class="v">${avg?avg.toLocaleString("sv-SE",{maximumFractionDigits:1}):"–"}</div><div class="l">snittbetyg ${sel} (${rated.length} betygsatta)</div></div>
   </div>
-  <div class="card"><div class="sec-h"><h3>Lästa böcker per månad ${sel}</h3></div>${sel<2016?`<p class="muted small" style="margin-top:0">För ${sel} finns bara året loggat, så fördelningen över månader stämmer inte.</p>`:sel<2023?`<p class="muted small" style="margin-top:0">För ${sel} finns månad men inte exakt datum.</p>`:""}
+  <div class="card"><div class="sec-h"><h3>Lästa böcker per månad ${sel}</h3></div>${sel<2016?`<p class="muted small" style="margin-top:0">För ${sel} finns bara året loggat, så fördelningen över månader stämmer inte.</p>`:sel<2024?`<p class="muted small" style="margin-top:0">För ${sel} finns månad men inte exakt datum.</p>`:sel===2024?`<p class="muted small" style="margin-top:0">Exakta datum från september 2024, månad innan dess.</p>`:""}
     ${vbars(MON_SV.map((l,i)=>({l,v:(books[sel]||[])[i]||0,n:(nov[sel]||[])[i]||0,title:MON_SV_LONG[i]+" "+sel,now:sel===Y&&i===now.getMonth()})),{label:"Böcker per månad "+sel})}${legend}</div>
   <div class="grid2">
     <div class="card"><div class="sec-h"><h3>Böcker per år</h3></div>${vbars(years.map(y=>({l:"’"+String(y).slice(2),title:String(y),v:sum(books[y]),n:sum(nov[y]),now:y===sel})),{label:"Böcker per år"})}${legend}</div>
