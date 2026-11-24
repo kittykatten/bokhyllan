@@ -441,6 +441,7 @@ async function maybeEnrich(){
     if(/^\s*audrain\.?\s*,?\s*a\.?\s*$/i.test(b.author||"")) put(b,{author:"Ashley Audrain", seriesTried:true, wdSeries:null});
     if(b.status==="Backlog") put(b,{status:""});
     if(/^nedladdad$/i.test(String(b.source||"").trim())) put(b,{source:"Lokal fil"});
+    if(!b.release && /^\d{4}-\d{2}-\d{2}$/.test(String(b.added||"")) && b.added>todayISO() && !b.read && !b.started) put(b,{release:b.added});
     if(/kingfisher/i.test(b.author||"") && /^hemlock and silver$/i.test(String(b.title).trim())) put(b,{title:"Hemlock & Silver"});
     if(b.dropped && DROP_RENAME[b.dropped.reason]) put(b,{dropped:{...b.dropped, reason:DROP_RENAME[b.dropped.reason]}});
     if(phase(b)==="dnf" && !b.dropped && !b.droppedGuessed){ const fl=b.extra&&b.extra.Flyttad?parseDate(b.extra.Flyttad):""; put(b,{dropped:{date:/^\d{4}-\d{2}-\d{2}$/.test(fl)?fl:"", reason:guessDropReason(b)}, droppedGuessed:true}); }
@@ -1036,7 +1037,7 @@ function homeView(){
     <div class="tile"><div class="v">${fmtN(yp)}</div><div class="l">sidor ${Y}</div>${delta(yp,lp)}</div>
     <div class="tile"><div class="v">${planRead} / ${plan.length}</div><div class="l">av ${MON_SV_LONG[M]}s plan lästa</div></div>
   </div>
-  ${(()=>{ const ISO=/^\d{4}-\d{2}-\d{2}$/; const soon=S.books.filter(b=>phase(b)==="tbr").map(b=>{ const hasR=ISO.test(b.release||""); const r=hasR?b.release:(ISO.test(b.added||"")&&b.added>=todayISO()?b.added:""); return r?{b,r,d:daysUntil(r),min:hasR?-7:0}:null; }).filter(x=>x && x.d<=7 && x.d>=x.min).sort((x,y)=>x.d-y.d);
+  ${(()=>{ const ISO=/^\d{4}-\d{2}-\d{2}$/; const soon=S.books.filter(b=>phase(b)==="tbr").map(b=>{ const hasR=ISO.test(b.release||""); const r=hasR?b.release:""; return r?{b,r,d:daysUntil(r),min:-7}:null; }).filter(x=>x && x.d<=7 && x.d>=x.min).sort((x,y)=>x.d-y.d);
     return soon.map(({b,d,r})=>`<div class="notice row" data-book="${esc(b.id)}" role="button" tabindex="0" style="cursor:pointer">${d<=0?"🎉":"⏳"} <span class="grow"><b>${esc(b.title)}</b> av ${esc(b.author)}: ${d>0?(d===1?"släpps imorgon":"släpps om "+d+" dagar"):d===0?"släpps idag!":"har släppts ("+esc(fmtDate(r))+")"}</span></div>`).join(""); })()}
   ${nIssues?`<a class="notice" href="#stada" style="text-decoration:none;color:inherit;display:block">Du har ${nIssues} ${nIssues===1?"sak":"saker"} i Inkorgen. <b>Gå till Inkorgen →</b></a>`:""}
   <div class="hgrid">
@@ -1522,6 +1523,7 @@ async function saveBook(close=true){
   const planTo=b.plan; const planFrom=b.id?planOf(S.books.find(x=>x.id===b.id)||b):"";
   for(const k of ["gender","lang","origLang","series","num","status","source","format","added","started","read","due","comment","year","pages","libby","loaned","release"]) if(item[k]==null) item[k]="";
   item.rating=+item.rating||0; item.extra=item.extra||{}; item.genres=item.genres||[]; item.ratingForm=item.ratingForm||{}; item.moreAuthor=+item.moreAuthor||0; item.num=firstNum(item.num);
+  { const a=String(item.added||""); if(/^\d{4}-\d{2}-\d{2}$/.test(a) && a>todayISO() && !item.release) item.release=a; }
   if(/^\d{4}-\d{2}-\d{2}$/.test(String(item.release||""))){ if(!item.year) item.year=+item.release.slice(0,4); if(!item.read && !item.started) item.added=item.release; }
   for(const k of ["added","started","read","due","loaned","release"]){ if(item[k]){ const v=parseDate(String(item[k]).replace(/^(\d{4})-(\d{1,2})-(\d{1,2})$/,(m,y,mo,d)=>y+"-"+mo.padStart(2,"0")+"-"+d.padStart(2,"0"))); if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){ toast("Skriv datum som ÅÅÅÅ-MM-DD, till exempel 2026-11-23."); return; } item[k]=v; } }
   { const ld=loanDays(item); if(item.loaned && ld) item.due=addDaysISO(item.loaned, ld); }
