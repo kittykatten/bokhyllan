@@ -359,11 +359,15 @@ async function loadCovers(){
     const d=await r.json(); S.covers=new Set(d.covers||[]); S.ol=d.meta||{}; S.olClear=d.clearStatus||[]; S.authorFix=d.authorFix||{}; render(); maybeEnrich();
   }catch(_){}
 }
+const SEED_BOOKS=[
+  {key:"vargpojken", title:"Vargpojken", author:"Erik Axl Sund", item:{title:"Vargpojken", author:"Erik Axl Sund", lang:"Svenska", origLang:"Svenska", series:"Maras barn", num:"3"}},
+];
 // Series confirmed by Kitty (Goodreads links). Only fills books without a series.
 const SERIES_RULES=[
   {a:/bäck/i, s:"Vattnet drar", t:{"vattnet drar":1,"jorden vaknar":2,"berget offrar":3}},
   {a:/ashton/i, s:"Mickey7", t:{"mickey7":1,"antimatter blues":2,"mickey prime":3}},
   {a:/axl sund/i, s:"Melankolitrilogin", t:{"glaskroppar":1,"dockliv":2,"otid":3}},
+  {a:/axl sund/i, s:"Maras barn", t:{"pafagelmannen":1,"ormkvinnan":2,"vargpojken":3}},
   {a:/axl sund/i, s:"Victoria Bergmans svaghet", t:{"krakflickan":1,"hungerelden":2,"pythians anvisningar":3}},
   {a:/engstr[oö]m/i, s:"Nordmark", t:{"nattavaara":1,"armasjarvi":2}},
   {a:/h[aå]rd/i, s:"Arvet efter Kaiser", t:{"kleptomania":1,"snosommar":2,"blodkraxa":3}},
@@ -431,6 +435,16 @@ async function maybeEnrich(){
     try{ await queued(doc, ()=>S.db.doc("lib/"+doc).update({items})); }catch(_){}
   }
   // Library card dates given by hand (only filled in if empty).
+  // Books Kitty asked to have added. Added once; if she deletes one it is not added again.
+  const seeded=(S.docs.cleanState && S.docs.cleanState.seeded) || {};
+  for(const sd of SEED_BOOKS){
+    if(seeded[sd.key] || (S.seededNow ||= new Set()).has(sd.key) || S.books.some(b=>norm(b.title)===norm(sd.title) && authorKey(b.author)===authorKey(sd.author))) continue;
+    const like=S.books.find(b=>authorKey(b.author)===authorKey(sd.author));
+    const item={kind:"bok", gender:(like&&like.gender)||"", lang:"", origLang:"", status:"", source:"", format:"", started:"", read:"", due:"", comment:"", year:"", pages:"",
+      rating:0, extra:{}, genres:(like&&like.genres)||[], ratingForm:{}, moreAuthor:0, added:todayISO(), ...sd.item};
+    S.seededNow.add(sd.key);
+    try{ await queued("cleanState",()=>S.db.doc("lib/cleanState").update({seeded:{[sd.key]:true}})); await putItem("books", uid("b"), item); toast(sd.item.title+" har lagts till bland Att läsa."); }catch(e){}
+  }
   const cardDates={alamosa:"2028-11-05"};
   if(S.libs.some(l=>cardDates[norm(l.name)] && !l.validTo)){
     const list=S.libs.map(l=>({...l, validTo:l.validTo||cardDates[norm(l.name)]||""}));
