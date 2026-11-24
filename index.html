@@ -441,6 +441,7 @@ async function maybeEnrich(){
     if(/^\s*audrain\.?\s*,?\s*a\.?\s*$/i.test(b.author||"")) put(b,{author:"Ashley Audrain", seriesTried:true, wdSeries:null});
     if(b.status==="Backlog") put(b,{status:""});
     if(/^nedladdad$/i.test(String(b.source||"").trim())) put(b,{source:"Lokal fil"});
+    if(langName(b.lang)==="Kinesiska" && langName(b.origLang)==="Engelska" && /three.?body/i.test(b.title||"")) put(b,{lang:"Engelska", origLang:"Kinesiska"});
     if(!b.release && /^\d{4}-\d{2}-\d{2}$/.test(String(b.added||"")) && b.added>todayISO() && !b.read && !b.started) put(b,{release:b.added});
     if(/kingfisher/i.test(b.author||"") && /^hemlock and silver$/i.test(String(b.title).trim())) put(b,{title:"Hemlock & Silver"});
     if(b.dropped && DROP_RENAME[b.dropped.reason]) put(b,{dropped:{...b.dropped, reason:DROP_RENAME[b.dropped.reason]}});
@@ -739,7 +740,7 @@ function viewHtml(){
   return html;
 }
 function render(){
-  const v=view(); const top=["statistik","serier","priser","bibliotek","import","bortvalda"].includes(v)?"mer":(v==="forfattare"?"bocker":v);
+  const v=view(); if(v!=="bocker") S.pickId=null; const top=["statistik","serier","priser","bibliotek","import","bortvalda"].includes(v)?"mer":(v==="forfattare"?"bocker":v);
   document.querySelectorAll("#tabs a").forEach(a=>a.setAttribute("aria-current", a.getAttribute("href")==="#"+top?"page":"false"));
   { const t=$("#tabInbox"); if(t){ let n=0; try{ if(S.loaded) n=cleanProposals().length+newBookList().length+backlogAsk().length; }catch(_){} t.innerHTML="Inkorg"+(n?`<span class="badge">${n}</span>`:""); } }
   const main=$("#main"); const scroll=main.scrollTop;
@@ -850,7 +851,6 @@ function booksView(){
     <select id="fStatus" aria-label="Status"><option value="">Alla statusar</option>${STATUSES.filter(Boolean).map(s=>`<option ${f.status===s?"selected":""}>${esc(s)}</option>`).join("")}</select>
     <select id="fKind" aria-label="Typ"><option value="">Romaner och noveller</option><option value="bok" ${f.kind==="bok"?"selected":""}>Bara romaner</option><option value="novella" ${f.kind==="novella"?"selected":""}>Bara noveller</option></select>
     <select id="fSer" aria-label="Serie"><option value="">Med och utan serie</option><option value="in" ${f.ser==="in"?"selected":""}>Bara serieböcker</option><option value="none" ${f.ser==="none"?"selected":""}>Fristående</option></select>
-    <select id="fAuth" aria-label="Författare"><option value="">Alla författare</option><option value="more" ${f.auth==="more"?"selected":""}>Författare jag vill läsa mer av</option></select>
     <select id="fSort" aria-label="Sortering">${[["plan","Bäst förslag först"],["short","Kortast först"],["old","Längst på listan"],["added","Senast tillagd"],["read","Senast läst"],["title","Titel A–Ö"],["author","Författare A–Ö"],["rating","Betyg"],["pages","Flest sidor"],["year","Nyast utgiven"]].map(([v,l])=>`<option value="${v}" ${f.sort===v?"selected":""}>${l}</option>`).join("")}</select>
   </div>
   ${moreFilters(f)}
@@ -862,7 +862,7 @@ function booksView(){
 `;
 }
 function moreFilters(f){
-  const langs=[...new Set(S.books.map(b=>langName(b.lang)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"sv"));
+  const langs=[...new Set(S.books.filter(b=>phase(b)!=="dnf").map(b=>langName(b.lang)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"sv"));
   const on=[f.avail,f.libby,f.nextSer,f.genre,f.lang,f.maxPages,f.gender].filter(Boolean).length;
   const gchip=g=>`<button class="chip" data-ng="${esc(g)}" aria-pressed="${f.genre===g}">${esc(g)}</button>`;
   return `<details class="card" style="padding:10px 12px" ${on||S.moreOpen?"open":""} data-moreopen>
