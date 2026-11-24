@@ -1387,6 +1387,9 @@ function statsView(){
   const readSel=readAll.filter(b=>String(b.read).startsWith(sel+"-"));
   const rated=readSel.filter(b=>b.rating); const avg=rated.length?(rated.reduce((s,b)=>s+b.rating,0)/rated.length):0;
   const yBooks=sum(books[sel]), yPages=sum(pages[sel]); const yNov=sum(nov[sel]);
+  const upto=(a,n)=>(a||[]).slice(0,n).reduce((x,y)=>x+y,0); const nM=sel===Y?now.getMonth()+1:12;
+  const pB=upto(books[sel-1],nM), pP=upto(pages[sel-1],nM);
+  const delta=(a,b)=>{ if(!b) return ""; const d=a-b; return `<div class="delta">${d>0?"▲ +":d<0?"▼ −":"± "}${fmtN(Math.abs(d))} mot ${sel===Y?"samma tid ":""}${sel-1} (${fmtN(b)})</div>`; };
   const legend=`<div class="legend"><span><i style="background:var(--accent)"></i>Romaner</span><span><i style="background:var(--nov)"></i>Noveller</span></div>`;
   const monthsGone = sel===Y ? now.getMonth()+1 : 12;
   const scope = S.statScope||"year"; const base = scope==="year"?readSel:readAll;
@@ -1397,8 +1400,8 @@ function statsView(){
   <div class="row"><h2 class="grow" style="font-size:22px">Statistik</h2>
     <select id="statYear" aria-label="År">${years.slice().reverse().map(y=>`<option ${y===sel?"selected":""}>${y}</option>`).join("")}</select></div>
   <div class="tiles">
-    <div class="tile"><div class="v">${fmtN(yBooks)}</div><div class="l">böcker ${sel}${yNov?`<br>${fmtN(yBooks-yNov)} romaner · ${fmtN(yNov)} noveller`:""}</div></div>
-    <div class="tile"><div class="v">${fmtN(yPages)}</div><div class="l">sidor ${sel}</div></div>
+    <div class="tile"><div class="v">${fmtN(yBooks)}</div><div class="l">böcker ${sel}${yNov?`<br>${fmtN(yBooks-yNov)} romaner · ${fmtN(yNov)} noveller`:""}</div>${delta(yBooks,pB)}</div>
+    <div class="tile"><div class="v">${fmtN(yPages)}</div><div class="l">sidor ${sel}</div>${delta(yPages,pP)}</div>
     <div class="tile"><div class="v">${((yBooks-yNov)/monthsGone).toLocaleString("sv-SE",{maximumFractionDigits:1})}</div><div class="l">${yNov?"romaner":"böcker"} per månad</div></div>
     <div class="tile"><div class="v">${avg?avg.toLocaleString("sv-SE",{maximumFractionDigits:1}):"–"}</div><div class="l">snittbetyg ${sel} (${rated.length} betygsatta)</div></div>
   </div>
