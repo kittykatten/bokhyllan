@@ -265,7 +265,7 @@ function phase(b){
   if(b.started) return "reading";
   return "tbr";
 }
-const LANGS={eng:"engelska",en:"engelska",swe:"svenska",sv:"svenska",sve:"svenska",jap:"japanska",jpn:"japanska",ice:"isländska",isl:"isländska",kor:"koreanska",fre:"franska",fra:"franska",fr:"franska",ger:"tyska",deu:"tyska",tys:"tyska",spa:"spanska",nor:"norska",dan:"danska",fin:"finska",ita:"italienska",rus:"ryska",chi:"kinesiska",kin:"kinesiska",zho:"kinesiska",pol:"polska",por:"portugisiska",dut:"nederländska",hol:"nederländska",ned:"nederländska",nld:"nederländska",ara:"arabiska",heb:"hebreiska",tur:"turkiska",gre:"grekiska",ell:"grekiska",cze:"tjeckiska",ces:"tjeckiska",hun:"ungerska",per:"persiska",fas:"persiska",hin:"hindi",ukr:"ukrainska",lat:"latin",est:"estniska",lit:"litauiska",lav:"lettiska",ser:"serbiska",srp:"serbiska",cro:"kroatiska",hrv:"kroatiska",rom:"rumänska",ron:"rumänska",vie:"vietnamesiska",tha:"thailändska",ind:"indonesiska",far:"färöiska",fao:"färöiska"};
+const LANGS={eng:"engelska",en:"engelska",swe:"svenska",sv:"svenska",sve:"svenska",jap:"japanska",jpn:"japanska",ice:"isländska",isl:"isländska",kor:"koreanska",fre:"franska",fra:"franska",fr:"franska",ger:"tyska",deu:"tyska",tys:"tyska",spa:"spanska",nor:"norska",dan:"danska",fin:"finska",ita:"italienska",rus:"ryska",chi:"kinesiska",kin:"kinesiska",zho:"kinesiska",pol:"polska",por:"portugisiska",dut:"nederländska",hol:"nederländska",ned:"nederländska",nld:"nederländska",ara:"arabiska",heb:"hebreiska",tur:"turkiska",gre:"grekiska",ell:"grekiska",cze:"tjeckiska",ces:"tjeckiska",hun:"ungerska",per:"persiska",fas:"persiska",hin:"hindi",ukr:"ukrainska",lat:"latin",est:"estniska",lit:"litauiska",lav:"lettiska",ser:"serbiska",srp:"serbiska",cro:"kroatiska",hrv:"kroatiska",rom:"rumänska",ron:"rumänska",vie:"vietnamesiska",tha:"thailändska",ind:"indonesiska",far:"färöiska",fao:"färöiska",chn:"kinesiska",cn:"kinesiska",ch:"kinesiska",zh:"kinesiska",man:"kinesiska",jp:"japanska",ja:"japanska",kr:"koreanska",ko:"koreanska",sp:"spanska",esp:"spanska",es:"spanska",de:"tyska",ty:"tyska",it:"italienska",ru:"ryska",pl:"polska",pt:"portugisiska",nl:"nederländska",no:"norska",nb:"norska",da:"danska",dk:"danska",fi:"finska",is:"isländska",gr:"grekiska",el:"grekiska",tr:"turkiska",ar:"arabiska",he:"hebreiska",heb:"hebreiska",hu:"ungerska",cs:"tjeckiska",cz:"tjeckiska",uk:"ukrainska",ro:"rumänska",et:"estniska",lt:"litauiska",lv:"lettiska",hr:"kroatiska",sr:"serbiska",vi:"vietnamesiska",th:"thailändska",id:"indonesiska",hi:"hindi",fa:"persiska",la:"latin",ga:"iriska",gle:"iriska",cy:"walesiska",wel:"walesiska",ca:"katalanska",cat:"katalanska",eu:"baskiska",baq:"baskiska",yid:"jiddisch",sq:"albanska",alb:"albanska",sl:"slovenska",slv:"slovenska",sk:"slovakiska",slo:"slovakiska",bg:"bulgariska",bul:"bulgariska",af:"afrikaans",sw:"swahili",yo:"yoruba",ur:"urdu",bn:"bengali",ta:"tamil",tl:"tagalog",fil:"filippinska"};
 function langName(c){ const k=String(c||"").trim(); const n=LANGS[k.toLowerCase()]||k; return n.charAt(0).toUpperCase()+n.slice(1); }
 function seriesInfo(b){
   if(b.series) return {series:b.series, num:b.num||""};
@@ -371,6 +371,16 @@ async function maybeEnrich(){
     if(b.series){ const ps=parseSeriesField(b.series); if(ps.name!==b.series){ const patch={series:ps.name}; if(ps.num && !b.num) patch.num=ps.num; else if(b.num) patch.num=firstNum(b.num); put(b,patch); b.series=ps.name; if(patch.num) b.num=patch.num; } }
     if(b.num && String(b.num)!==firstNum(b.num)) put(b,{num:firstNum(b.num)});
     if(norm(b.source)==="colorado") put(b,{source:"Alamosa"});
+    // Language codes -> names ("Chn" -> "Kinesiska"), whitespace, gender, odd dates.
+    for(const k of ["lang","origLang"]){ const v=b[k]; if(v){ const n=langName(v); if(n!==v) put(b,{[k]:n}); } }
+    for(const k of ["title","author","source","format","status"]){ const v=b[k]; if(typeof v==="string"){ const c=v.replace(/\s+/g," ").trim(); if(c!==v) put(b,{[k]:c}); } }
+    if(b.gender && b.gender!==String(b.gender).trim().toUpperCase()) put(b,{gender:String(b.gender).trim().toUpperCase()});
+    for(const k of ["added","started","read","due"]){ const v=b[k]; if(v && !/^\d{4}-\d{2}-\d{2}$/.test(v)){
+      let iso=parseDate(v);
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(iso)){ const m=String(v).trim().match(/^(\d{1,2})\s*([A-Za-zåäö]{3})/); const mo=m&&MONMAP[m[2].toLowerCase()];
+        const ref=/^\d{4}-\d{2}-\d{2}$/.test(b.read||"")?b.read:/^\d{4}-\d{2}-\d{2}$/.test(b.added||"")?b.added:"";
+        if(mo && ref){ let y=+ref.slice(0,4); if(k!=="added" && mo>+ref.slice(5,7)) y--; iso=y+"-"+String(mo).padStart(2,"0")+"-"+m[1].padStart(2,"0"); } }
+      if(/^\d{4}-\d{2}-\d{2}$/.test(iso)) put(b,{[k]:iso}); } }
     if(b.series && !isNumLike(b.series)){ const fx=fixSeriesName(b.series,b.lang); if(fx!==b.series) put(b,{series:fx}); }
     if(b.format && /^[a-zåäö]/.test(b.format)) put(b,{format:b.format.charAt(0).toUpperCase()+b.format.slice(1)});
     if(langName(b.lang)==="Engelska" && !b.titleKeep){ const tc=titleCase(b.title); if(tc!==b.title) put(b,{title:tc, titleOrig:b.titleOrig||b.title}); }
@@ -804,6 +814,35 @@ async function startScan(){
   }catch(_){ toast("Kameran gick inte att starta. Skriv ISBN i stället."); stopScan(); }
 }
 function stopScan(){ clearInterval(scanTimer); scanTimer=null; if(scanStream){ scanStream.getTracks().forEach(t=>t.stop()); scanStream=null; } const box=$("#scanBox"); if(box) box.innerHTML=""; }
+// Series from Wikidata: only stored as a suggestion (wdSeries), applied after approval in Städa.
+async function wikidataSeries(b){
+  const sa=splitAuthor(b.author); const sur=norm(sa?sa.last:String(b.author||"").split(" ").pop()).split(" ").pop();
+  if(!sur) return null;
+  const lang=langName(b.lang)==="Svenska"?"sv":"en";
+  const t=b.title.split(":")[0].replace(/["\\]/g,"").trim();
+  const q=`SELECT ?sLabel ?ord WHERE {
+    SERVICE wikibase:mwapi { bd:serviceParam wikibase:endpoint "www.wikidata.org"; wikibase:api "EntitySearch"; mwapi:search "${t}"; mwapi:language "${lang}". ?b wikibase:apiOutputItem mwapi:item. }
+    ?b wdt:P50 ?a. ?a rdfs:label ?al. FILTER(CONTAINS(LCASE(STR(?al)), "${sur}"))
+    ?b p:P179 ?st. ?st ps:P179 ?s. OPTIONAL { ?st pq:P1545 ?ord }
+    SERVICE wikibase:label { bd:serviceParam wikibase:language "${lang},en". } } LIMIT 3`;
+  const d=await fetchJson("https://query.wikidata.org/sparql?format=json&query="+encodeURIComponent(q));
+  const r=(d.results&&d.results.bindings||[]).find(x=>x.sLabel && !/^Q\d+$/.test(x.sLabel.value));
+  return r?{name:r.sLabel.value, num:r.ord?r.ord.value:""}:null;
+}
+let seriesRun=false;
+async function findSeries(){
+  if(seriesRun || !S.db || !S.loaded) return; seriesRun=true;
+  const need=b=>!seriesOf(b) && !b.seriesTried && b.title && b.author && phase(b)!=="dnf";
+  const todo=S.books.filter(need).sort((a,b)=>(b.num?1:0)-(a.num?1:0)).slice(0,30);
+  const patches={};
+  for(const b of todo){
+    let r=null; try{ r=await wikidataSeries(b); }catch(_){ break; }
+    patches[b.id]= r ? {wdSeries:r, seriesTried:true} : {seriesTried:true};
+    await new Promise(res=>setTimeout(res,1100));
+  }
+  if(Object.keys(patches).length) await batchUpdate(patches);
+  seriesRun=false;
+}
 // Find covers for books that have none, quietly in the background, a few at a time.
 let coverRun=false;
 async function findCovers(){
@@ -957,6 +996,9 @@ function cleanIssues(){
   groups.push({key:"nopages", title:"Saknar sidantal", count:nopages.length, books:nopages});
   const nolang=S.books.filter(b=>!b.lang); groups.push({key:"nolang", title:"Saknar språk", count:nolang.length, books:nolang});
   const nogender=S.books.filter(b=>!b.gender); groups.push({key:"nogender", title:"Saknar författarens kön", count:nogender.length, books:nogender});
+  const known=new Set(Object.values(LANGS).map(v=>v.toLowerCase()));
+  const oddLang=S.books.filter(b=>[b.lang,b.origLang].some(v=>v && !known.has(String(v).toLowerCase())));
+  groups.push({key:"oddlang", title:"Språk som appen inte känner igen", count:oddLang.length, books:oddLang});
   // 6. Titles changed automatically (review)
   const changed=S.books.filter(b=>b.titleOrig && b.titleOrig!==b.title);
   groups.push({key:"titles", title:"Titlar som skrevs om automatiskt", count:0, review:changed.length, books:changed});
@@ -1003,6 +1045,8 @@ function cleanProposals(){
     const target=(sa && full[norm(sa.last).split(" ").pop()+"|"+sa.init.toLowerCase()]) || (S.authorFix||{})[b.id];
     if(target && target!==a){ const k=a+"→"+target; (nameGroups[k] ||= {from:a,to:target,ids:[]}).ids.push(b.id); } });
   Object.values(nameGroups).forEach((g,i)=>{ const patches={}; g.ids.forEach(id=>patches[id]={author:g.to}); out.push({id:"nm"+i, group:"names", title:g.to, detail:"ersätter “"+g.from+"” · "+g.ids.length+(g.ids.length>1?" böcker":" bok"), patches}); });
+  S.books.filter(b=>b.wdSeries && !seriesOf(b)).forEach(b=>{ const w=b.wdSeries; const nm=fixSeriesName(w.name,b.lang);
+    out.push({id:"wd"+b.id, group:"wdseries", title:b.title, detail:`${nm}${(b.num||w.num)?" #"+firstNum(b.num||w.num):""} (Wikidata)`, patches:{[b.id]:{series:nm, num:firstNum(b.num||w.num||"")}}, bookId:b.id}); });
   const byA={}; S.books.forEach(b=>{ (byA[authorKey(b.author)] ||= []).push(b); });
   S.books.filter(b=>!b.gender).forEach(b=>{ const v=[...new Set((byA[authorKey(b.author)]||[]).map(x=>x.gender).filter(Boolean))];
     if(v.length===1) out.push({id:"ge"+b.id, group:"gender", title:b.title, detail:`${GENDER[v[0]]||v[0]}, som dina andra böcker av ${b.author}`, patches:{[b.id]:{gender:v[0]}}, bookId:b.id}); });
@@ -1028,7 +1072,7 @@ async function applyProposals(which){
 }
 function cleanView(){
   const P=cleanProposals(); const skip=S.cleanSkip||new Set(); const g=cleanIssues(); const open=S.cleanOpen;
-  const GT={names:"Författarnamn till Förnamn Efternamn", authors:"Samma författare skriven på olika sätt", dups:"Dubbletter och omläsningar", gender:"Författarens kön saknas", lang:"Språk saknas"};
+  const GT={wdseries:"Serier från Wikidata", names:"Författarnamn till Förnamn Efternamn", authors:"Samma författare skriven på olika sätt", dups:"Dubbletter och omläsningar", gender:"Författarens kön saknas", lang:"Språk saknas"};
   const ch=S.dupChoice||{};
   const active=P.filter(p=>p.group==="dups"?!!ch[p.id]:!skip.has(p.id));
   const recLine=b=>{ const p=phase(b); const where=b.kind==="novella"?"från Novella-fliken":b.kind==="removed"?"från Removed-fliken":"";
@@ -1055,9 +1099,9 @@ function cleanView(){
       `<button class="btn primary" data-apply="${k}" style="margin-top:10px" ${on?"":"disabled"}>Godkänn ${on} förslag</button>`);
   }).join("");
   const bookList=(list,extra)=>list.length?list.slice(0,200).map(b=>`<div class="mini" data-book="${esc(b.id)}" role="button" tabindex="0">${coverHtml(b)}<div class="grow"><div class="t">${esc(b.title)}</div><div class="s">${authorLink(b.author)}${extra?" · "+extra(b):""}</div></div></div>`).join(""):`<p class="muted small">Inget att åtgärda.</p>`;
-  const info=g.filter(x=>["noname","nodue","nopages","titles"].includes(x.key)).map(x=>{
+  const info=g.filter(x=>["noname","nodue","nopages","oddlang","titles"].includes(x.key)).map(x=>{
     if(x.key==="titles") return sec(x.key,x.title,x.books.length, x.books.length?`<p class="muted small" style="margin-top:0">Engelska titlar skrevs om till engelsk stil. Ångra de som blev fel.</p>`+x.books.map(b=>`<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><div class="grow"><b>${esc(b.title)}</b><div class="muted small">var: ${esc(b.titleOrig)}</div></div><button class="btn small" data-undotitle="${esc(b.id)}">Ångra</button></div>`).join(""):`<p class="muted small">Inga.</p>`);
-    return sec(x.key,x.title,x.count, `<p class="muted small" style="margin-top:0">Här finns inget säkert förslag. Öppna boken och fyll i själv.</p>`+bookList(x.books, x.key==="noname"?(b=>"#"+esc(firstNum(b.num))):null));
+    return sec(x.key,x.title,x.count, `<p class="muted small" style="margin-top:0">Här finns inget säkert förslag. Öppna boken och fyll i själv.</p>`+bookList(x.books, x.key==="noname"?(b=>"#"+esc(firstNum(b.num))):x.key==="oddlang"?(b=>esc([b.lang,b.origLang].filter(Boolean).join(" / "))):null));
   }).join("");
   return `<h2 style="font-size:22px">Städa</h2>
   ${P.length?`<div class="notice row"><span class="grow">Jag har gjort <b>${P.length} förslag</b> utifrån det som redan finns i din lista. Gå igenom dem, ta bort bocken på dem som är fel och godkänn resten. Dubbletter måste du välja själv.</span><button class="btn primary" data-apply="all" ${active.length?"":"disabled"}>Genomför ${active.length}</button></div>`:`<p class="muted">Inga förslag just nu.</p>`}
@@ -1643,7 +1687,7 @@ function startData(){
     S.docs=docs; rebuild();
     if(!snap.metadata.fromCache){ S.loaded=true; clearTimeout(timer); }
     else if(Object.keys(docs).length) S.loaded=true;
-    if(S.loaded){ maybeEnrich(); setTimeout(findCovers, 4000); }
+    if(S.loaded){ maybeEnrich(); setTimeout(findCovers, 4000); setTimeout(findSeries, 9000); }
     if(S.edit && S.edit.id){ const fresh=S.books.find(b=>b.id===S.edit.id); if(fresh) S.edit._doc=fresh._doc; }
     render();
   }, err=>{ clearTimeout(timer); S.loaded=true; S.error="Kunde inte läsa databasen ("+((err&&err.code)||"fel")+")."; render(); });
