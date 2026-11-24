@@ -968,6 +968,27 @@ async function findCovers(){
   coverRun=false;
 }
 
+// Missing page counts: Open Library's median edition length (free, no key). Only fills empty fields, and marks where it came from.
+let pagesRun=false;
+async function findPages(){
+  if(pagesRun || !S.db || !S.loaded) return; pagesRun=true;
+  const todo=S.books.filter(b=>!b.pages && !b.pagesTried && b.title && phase(b)!=="dnf").slice(0,30);
+  const patches={};
+  for(const b of todo){
+    let pages=0;
+    try{
+      const sa=splitAuthor(b.author); const sur=sa?sa.last:String(b.author||"").split(" ").pop(); const ct=norm(b.title.split(":")[0]);
+      const od=await fetchJson("https://openlibrary.org/search.json?limit=5&fields=title,author_name,number_of_pages_median&title="+encodeURIComponent(b.title.split(":")[0])+"&author="+encodeURIComponent(sur));
+      const oh=(od.docs||[]).find(x=>x.number_of_pages_median && norm(x.title||"").startsWith(ct) && (x.author_name||[]).some(a=>norm(a).includes(norm(sur))));
+      if(oh) pages=oh.number_of_pages_median;
+    }catch(_){ break; }
+    patches[b.id]= pages ? {pages, pagesTried:true, filled:{...(b.filled||{}), pages:"Open Library"}} : {pagesTried:true};
+    await new Promise(r=>setTimeout(r,700));
+  }
+  if(Object.keys(patches).length) await batchUpdate(patches);
+  pagesRun=false;
+}
+
 /* --- shared helpers for home / clean / libraries --- */
 const HOLD_ST=["On hold","Suspended"];   // "Waitlist" = the title has a waitlist, not that you're in it
 const LOAN_ST=["Lånad"];
@@ -1961,7 +1982,7 @@ function startData(){
     S.docs=docs; rebuild();
     if(!snap.metadata.fromCache){ S.loaded=true; clearTimeout(timer); }
     else if(Object.keys(docs).length) S.loaded=true;
-    if(S.loaded){ maybeEnrich(); setTimeout(findCovers, 4000); setTimeout(findSeries, 9000); }
+    if(S.loaded){ maybeEnrich(); setTimeout(findCovers, 4000); setTimeout(findSeries, 9000); setTimeout(findPages, 15000); }
     if(S.edit && S.edit.id){ const fresh=S.books.find(b=>b.id===S.edit.id); if(fresh) S.edit._doc=fresh._doc; }
     render();
   }, err=>{ clearTimeout(timer); S.loaded=true; S.error="Kunde inte läsa databasen ("+((err&&err.code)||"fel")+")."; render(); });
