@@ -382,6 +382,7 @@ const SERIES_RULES=[
   {a:/bj[oö]rkelid/i, s:"Berättelsen om Blodet", t:{"ondvinter":1,"eldbarare":2,"forbundsbryterskan":3,"frostskymning":4}},
   {a:/okorafor/i, s:"Who Fears Death", t:{"the book of phoenix":0,"who fears death":1}},
   {a:/lindqvist/i, s:"Platserna", t:{"himmelstrand":1,"rorelsen":2,"x den sista platsen":3}},
+  {a:/le ?guin/i, s:"The Hainish Cycle", t:{"the left hand of darkness":"","the dispossessed":"","the telling":"","rocannon s world":"","planet of exile":"","city of illusions":"","the word for world is forest":"","four ways to forgiveness":"","a fisherman of the inland sea":""}},
   {a:/jemisin/i, s:"Dreamblood", t:{"the killing moon":1,"killing moon":1,"the shadowed sun":2,"shadowed sun":2}},
 ];
 async function maybeEnrich(){
@@ -405,8 +406,9 @@ async function maybeEnrich(){
       const order=[[/stone|vises sten/,1],[/chamber|hemligheternas kammare/,2],[/azkaban/,3],[/goblet|flammande bägaren/,4],[/phoenix|fenixorden/,5],[/half-blood|halvblodsprinsen/,6],[/deathly|dödsrelikerna/,7],[/cursed child|fördömda barnet/,8]];
       const hit=order.find(([re])=>re.test(t)); put(b,{series:"Harry Potter", num:hit?String(hit[1]):(b.num?firstNum(b.num):"")}); }
     // Corrections Kitty has given by hand.
+    if(/^\s*audrain\.?\s*,?\s*a\.?\s*$/i.test(b.author||"")) put(b,{author:"Ashley Audrain", seriesTried:true, wdSeries:null});
     if(!b.series){ const nt=norm(b.title); for(const r of SERIES_RULES){ if(!r.a.test(b.author||"")) continue;
-      const k=Object.keys(r.t).find(k=>nt===k || nt.endsWith(" "+k) || nt.startsWith(k+" ")); if(k){ put(b,{series:r.s, num:String(r.t[k])}); break; } } }
+      const k=Object.keys(r.t).find(k=>nt===k || nt.endsWith(" "+k) || nt.startsWith(k+" ")); if(k){ put(b,r.t[k]===""?{series:r.s}:{series:r.s, num:String(r.t[k])}); break; } } }
     if(/natt och dag/i.test(b.author||"") && /^179[345]$/.test(String(b.title).trim()) && !b.series) put(b,{series:"Bellman Noir Trilogy", num:String(+String(b.title).trim()-1792)});
     // Language codes -> names ("Chn" -> "Kinesiska"), whitespace, gender, odd dates.
     for(const k of ["lang","origLang"]){ const v=b[k]; if(v){ const n=langName(v); if(n!==v) put(b,{[k]:n}); } }
