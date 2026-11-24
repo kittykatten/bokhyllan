@@ -380,6 +380,7 @@ async function maybeEnrich(){
       const order=[[/stone|vises sten/,1],[/chamber|hemligheternas kammare/,2],[/azkaban/,3],[/goblet|flammande bägaren/,4],[/phoenix|fenixorden/,5],[/half-blood|halvblodsprinsen/,6],[/deathly|dödsrelikerna/,7],[/cursed child|fördömda barnet/,8]];
       const hit=order.find(([re])=>re.test(t)); put(b,{series:"Harry Potter", num:hit?String(hit[1]):(b.num?firstNum(b.num):"")}); }
     // Corrections Kitty has given by hand.
+    if(/bäck/i.test(b.author||"") && !b.series){ const vd={"vattnet drar":"1","jorden vaknar":"2","berget offrar":"3"}[norm(b.title)]; if(vd) put(b,{series:"Vattnet drar", num:vd}); }
     if(/natt och dag/i.test(b.author||"") && /^179[345]$/.test(String(b.title).trim()) && !b.series) put(b,{series:"Bellman Noir Trilogy", num:String(+String(b.title).trim()-1792)});
     // Language codes -> names ("Chn" -> "Kinesiska"), whitespace, gender, odd dates.
     for(const k of ["lang","origLang"]){ const v=b[k]; if(v){ const n=langName(v); if(n!==v) put(b,{[k]:n}); } }
