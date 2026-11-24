@@ -179,7 +179,6 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   <nav class="tabs" id="tabs">
     <a href="#hem">Hem</a>
     <a href="#bocker">Böcker</a>
-    <a href="#nasta">Nästa bok</a>
     <a href="#plan">Plan</a>
     <a href="#stada" id="tabInbox">Inkorg</a>
     <a href="#mer">Mer</a>
@@ -240,7 +239,7 @@ const S = {
   db:null, mcp:null, user:null, isOwner:null,
   docs:{}, loaded:false, error:null,
   books:[], series:[], awards:[], plans:{}, meta:null,
-  f:{q:"", phase:"tbr", status:"", kind:"", sort:"added", limit:150, ser:"", auth:""},
+  f:{q:"", phase:"tbr", status:"", kind:"", sort:"plan", limit:150, ser:"", auth:"", avail:false, libby:false, nextSer:false, genre:"", lang:"", maxPages:"", gender:""},
   serQ:"", serFilter:"open", awQ:"", awFilter:"winners", planKey:null,
   importing:null, covers:new Set(), ol:{}, enrichDone:false, gc:[], awSrc:"hn", gcCat:"",
   next:{avail:true, genre:"", lang:"", maxPages:"", kind:"", gender:"", series:false, sort:"plan", auth:""}, pickId:null,
@@ -727,7 +726,7 @@ async function runImport(){
 }
 
 /* ---------- views ---------- */
-function view(){ const h=(location.hash||"").slice(1); return ["hem","bocker","nasta","statistik","serier","priser","plan","import","forfattare","mer","stada","bibliotek","bortvalda"].includes(h)?h:"hem"; }
+function view(){ if(location.hash==="#nasta"){ history.replaceState(null,"","#bocker"); S.f.phase="tbr"; S.f.sort="plan"; } const h=(location.hash||"").slice(1); return ["hem","bocker","nasta","statistik","serier","priser","plan","import","forfattare","mer","stada","bibliotek","bortvalda"].includes(h)?h:"hem"; }
 function viewHtml(){
   let html;
   if(S.authState==="out") html = loginView();
@@ -803,8 +802,16 @@ function downloadBackup(){
 
 function filteredBooks(){
   const f=S.f; const q=norm(f.q); const AMall=authorMore(); const AM=f.auth?AMall:{};
+  const serNext=(f.nextSer||f.sort==="plan")?seriesNextMap():{}; const planT=new Set((S.plans[yymm(new Date())]||[]).map(i=>norm(i.title)));
   let list=S.books.filter(b=>{
     if(phase(b)==="dnf") return false;
+    if(f.avail && !AVAILABLE.includes(b.status)) return false;
+    if(f.libby && !(b.libby==="ja" && isEpubOrUnknown(b))) return false;
+    if(f.genre && !genresOf(b).includes(f.genre)) return false;
+    if(f.lang && langName(b.lang)!==f.lang) return false;
+    if(f.maxPages && !(+b.pages && +b.pages<=+f.maxPages)) return false;
+    if(f.gender && b.gender!==f.gender) return false;
+    if(f.nextSer && !serNext[norm(b.title)]) return false;
     if(f.phase==="unreleased"){ if(!(phase(b)==="tbr" && isUnreleased(b) && !noMoreAuthor(b,AMall))) return false; }
     else if(f.phase==="backlog"){ if(!isBacklog(b) || noMoreAuthor(b,AMall)) return false; }
     else if(f.phase==="tbr"){ if(phase(b)!=="tbr" || isUnreleased(b) || noMoreAuthor(b,AMall)) return false; }
@@ -818,10 +825,13 @@ function filteredBooks(){
     if(q && !norm(b.title+" "+b.author+" "+(b.series||"")+" "+(b.comment||"")+" "+genresOf(b).join(" ")).includes(q)) return false;
     return true;
   });
-  const by={added:b=>b.added||"",read:b=>b.read||b.started||"",title:b=>norm(b.title),author:b=>norm(b.author),pages:b=>+b.pages||0,year:b=>+b.year||0,rating:b=>+b.rating||0}[f.sort];
-  const desc=["added","read","pages","year","rating"].includes(f.sort);
+  const score=b=>(planT.has(norm(b.title))?100:0)+(serNext[norm(b.title)]?50:0)+(AVAILABLE.includes(b.status)?20:0)+(b.libby==="ja"?10:0)+((AMall[authorKey(b.author)]||3)-3)*10+(b.reread?5:0);
+  const by={plan:score, short:b=>-(+b.pages||9999), old:b=>"~"+String(b.added||"9"), added:b=>b.added||"",read:b=>b.read||b.started||"",title:b=>norm(b.title),author:b=>norm(b.author),pages:b=>+b.pages||0,year:b=>+b.year||0,rating:b=>+b.rating||0}[f.sort];
+  const desc=["added","read","pages","year","rating","plan","short"].includes(f.sort);
   list.sort((a,b)=>{ const x=by(a),y=by(b); return (x<y?-1:x>y?1:0)*(desc?-1:1); });
   if(f.phase==="unreleased"){ const rk=b=>relDate(b)||(b.year?b.year+"-12-31":"9999"); list.sort((a,b)=>rk(a).localeCompare(rk(b))); }
+  if(f.sort==="old") list.sort((a,b)=>String(a.added||"9").localeCompare(String(b.added||"9")));
+  if(S.pickId){ const i=list.findIndex(b=>b.id===S.pickId); if(i>0) list.unshift(list.splice(i,1)[0]); }
   return list;
 }
 function booksView(){
@@ -832,6 +842,7 @@ function booksView(){
   return `
   <div class="row">
     <input type="search" id="q" placeholder="Sök titel, författare, serie …" value="${esc(f.q)}" aria-label="Sök">
+    <button class="btn" data-act="pick" ${list.length?"":"disabled"} title="Välj en slumpvis bok bland det som visas">🎲 Slumpa</button>
     <button class="btn primary" data-act="new">+ Ny bok</button>
   </div>
   <div class="chips">${chip("tbr","Att läsa",counts.tbr)}${chip("reading","Läser",counts.reading)}${chip("unreleased","Kommande",counts.unrel)}${chip("backlog","Backlog",counts.backlog)}${chip("read","Lästa",counts.read)}${chip("","Alla",S.books.length-counts.dnf)}</div>
@@ -840,14 +851,36 @@ function booksView(){
     <select id="fKind" aria-label="Typ"><option value="">Romaner och noveller</option><option value="bok" ${f.kind==="bok"?"selected":""}>Bara romaner</option><option value="novella" ${f.kind==="novella"?"selected":""}>Bara noveller</option></select>
     <select id="fSer" aria-label="Serie"><option value="">Med och utan serie</option><option value="in" ${f.ser==="in"?"selected":""}>Bara serieböcker</option><option value="none" ${f.ser==="none"?"selected":""}>Fristående</option></select>
     <select id="fAuth" aria-label="Författare"><option value="">Alla författare</option><option value="more" ${f.auth==="more"?"selected":""}>Författare jag vill läsa mer av</option></select>
-    <select id="fSort" aria-label="Sortering">${[["added","Senast tillagd"],["read","Senast läst"],["title","Titel A–Ö"],["author","Författare A–Ö"],["rating","Betyg"],["pages","Flest sidor"],["year","Nyast utgiven"]].map(([v,l])=>`<option value="${v}" ${f.sort===v?"selected":""}>${l}</option>`).join("")}</select>
+    <select id="fSort" aria-label="Sortering">${[["plan","Bäst förslag först"],["short","Kortast först"],["old","Längst på listan"],["added","Senast tillagd"],["read","Senast läst"],["title","Titel A–Ö"],["author","Författare A–Ö"],["rating","Betyg"],["pages","Flest sidor"],["year","Nyast utgiven"]].map(([v,l])=>`<option value="${v}" ${f.sort===v?"selected":""}>${l}</option>`).join("")}</select>
   </div>
+  ${moreFilters(f)}
   <div id="results" style="display:flex;flex-direction:column;gap:16px">
   <p class="muted small" style="margin:0">${list.length} träffar</p>
   ${shown.length?`<div class="list">${shown.map(bookRow).join("")}</div>`:`<div class="empty">Inga böcker matchar.</div>`}
   ${list.length>shown.length?`<button class="btn" data-act="more">Visa fler (${list.length-shown.length} till)</button>`:""}
   </div>
 `;
+}
+function moreFilters(f){
+  const langs=[...new Set(S.books.map(b=>langName(b.lang)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"sv"));
+  const on=[f.avail,f.libby,f.nextSer,f.genre,f.lang,f.maxPages,f.gender].filter(Boolean).length;
+  const gchip=g=>`<button class="chip" data-ng="${esc(g)}" aria-pressed="${f.genre===g}">${esc(g)}</button>`;
+  return `<details class="card" style="padding:10px 12px" ${on||S.moreOpen?"open":""} data-moreopen>
+    <summary style="cursor:pointer" class="small"><b>Fler filter</b>${on?` <span class="badge">${on}</span>`:""}</summary>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+      <div class="chips"><button class="chip" data-ng="" aria-pressed="${!f.genre}">Alla genrer</button>${GENRES.map(gchip).join("")}</div>
+      <div class="row small">
+        <label class="row" style="gap:6px"><input type="checkbox" id="nAvail" ${f.avail?"checked":""}> Har tillgång till nu</label>
+        <label class="row" style="gap:6px"><input type="checkbox" id="nLibby" ${f.libby?"checked":""}> Finns i Libby</label>
+        <label class="row" style="gap:6px"><input type="checkbox" id="nSeries" ${f.nextSer?"checked":""}> Nästa del i påbörjade serier</label>
+      </div>
+      <div class="row small">
+        <select id="nLang" aria-label="Språk"><option value="">Alla språk</option>${langs.map(l=>`<option ${f.lang===l?"selected":""}>${esc(l)}</option>`).join("")}</select>
+        <select id="nPages" aria-label="Längd"><option value="">Alla längder</option>${[150,250,350,450].map(v=>`<option value="${v}" ${+f.maxPages===v?"selected":""}>Högst ${v} sidor</option>`).join("")}</select>
+        <select id="nGender" aria-label="Författarens kön"><option value="">Alla kön</option>${Object.entries(GENDER).map(([k,v])=>`<option value="${k}" ${f.gender===k?"selected":""}>${v}</option>`).join("")}</select>
+      </div>
+      <p class="muted small" style="margin:0">"Har tillgång till nu" betyder status Köpt, Lånad eller Lokal fil. Genre finns för ungefär hälften av böckerna. "Bäst förslag först" lyfter det som ligger i månadens plan, nästa del i serier, det du har tillgång till och författare du vill läsa mer av.</p>
+    </div></details>`;
 }
 function bookRow(b){
   const p=phase(b);
@@ -857,9 +890,9 @@ function bookRow(b){
   const nr=allReads(b).length;
   const when = p==="tbr"&&isUnreleased(b)?releaseText(b) : p==="dnf"?"Bortvald"+(b.dropped&&b.dropped.reason?" · "+b.dropped.reason:"") : p==="read"?(nr>1?"Läst "+nr+" ggr, senast ":"Läst ")+fmtDate(b.read) : p==="reading"?(b.reread?"Läser om, började ":"Började ")+fmtDate(b.started) : b.reread?"Läsa om"+(b.status?" · "+b.status:"") : b.status||"";
   const lib = p!=="read" && p!=="dnf" && isEpubOrUnknown(b) && (b.libby==="ja"||b.libby==="notify") ? (b.libby==="ja"?"📚 Libby":"🔔 Libby") : "";
-  return `<div class="item" data-book="${esc(b.id)}" tabindex="0" role="button">
+  return `<div class="item${b.id===S.pickId?" pick":""}" data-book="${esc(b.id)}" tabindex="0" role="button">
     <span class="stripe ph-${p}"></span>${coverHtml(b)}
-    <div><div class="t">${esc(b.title)}</div><div class="a">${authorLink(b.author)}</div><div class="m">${meta}</div></div>
+    <div><div class="t">${b.id===S.pickId?"🎲 ":""}${esc(b.title)}</div><div class="a">${authorLink(b.author)}</div><div class="m">${meta}</div></div>
     <div class="r"><span class="pill ph-${p}">${esc(when||PHASE_LABEL[p])}</span>${lib?`<span class="muted small" title="${esc(LIBBY[b.libby])}">${lib}</span>`:""}${b.rating?`<span class="stars" title="${fmtRating(b.rating)} av 5">${stars(b.rating)} <span class="muted small">${fmtRating(b.rating)}</span></span>`:""}${genresOf(b).slice(0,2).map(g=>`<span class="genre">${esc(g)}</span>`).join("")}</div>
   </div>`;
 }
@@ -1044,7 +1077,7 @@ function homeView(){
   ${nIssues?`<a class="notice" href="#stada" style="text-decoration:none;color:inherit;display:block">Du har ${nIssues} ${nIssues===1?"sak":"saker"} i Inkorgen. <b>Gå till Inkorgen →</b></a>`:""}
   <div class="hgrid">
     <div class="card"><div class="sec-h"><h3>Läser nu</h3><span class="muted small">${reading.length}</span></div>
-      ${reading.length?reading.map(b=>miniRow(b,`${authorLink(b.author)} · började ${esc(fmtDate(b.started))}`)).join(""):`<p class="muted small">Inget just nu. <a href="#nasta">Hitta nästa bok</a></p>`}</div>
+      ${reading.length?reading.map(b=>miniRow(b,`${authorLink(b.author)} · började ${esc(fmtDate(b.started))}`)).join(""):`<p class="muted small">Inget just nu. <a href="#bocker">Hitta nästa bok</a></p>`}</div>
     <div class="card"><div class="sec-h"><h3>Lån</h3><span class="muted small">${loans.length}</span></div>
       ${loans.length?loans.map(b=>miniRow(b,dueTxt(b))).join(""):`<p class="muted small">Inga lånade böcker.</p>`}</div>
     <div class="card"><div class="sec-h"><h3>I kö</h3><span class="muted small">${holds.length}</span></div>
@@ -1861,6 +1894,7 @@ document.addEventListener("input", e=>{
   else return;
   clearTimeout(refreshResults._t); refreshResults._t=setTimeout(refreshResults,180);
 });
+document.addEventListener("toggle", e=>{ if(e.target.matches && e.target.matches("[data-moreopen]")) S.moreOpen=e.target.open; }, true);
 document.addEventListener("change", e=>{
   const id=e.target.id;
   if(id==="fStatus"){ S.f.status=e.target.value; if(e.target.value) S.f.phase=""; render(); }
@@ -1881,7 +1915,7 @@ document.addEventListener("change", e=>{
   }
   if(id==="gcCat"){ S.gcCat=e.target.value; render(); }
   const nmap={nAvail:["avail","checked"],nLibby:["libby","checked"],nSeries:["series","checked"],nLang:["lang","value"],nPages:["maxPages","value"],nKind:["kind","value"],nGender:["gender","value"],nSort:["sort","value"],nAuth:["auth","value"]};
-  if(nmap[id]){ S.next[nmap[id][0]]=e.target[nmap[id][1]]; S.pickId=null; render(); }
+  if(nmap[id]){ S.f[({series:"nextSer"})[nmap[id][0]]||nmap[id][0]]=e.target[nmap[id][1]]; S.pickId=null; render(); }
 });
 document.addEventListener("keydown", e=>{
   if(e.key==="Enter" && e.target.id==="e_find"){ e.preventDefault(); runFind(); return; }
@@ -1925,7 +1959,7 @@ document.addEventListener("click", async e=>{
   if(d.af!=null){ S.authorF=d.af; render(); return; }
   if(d.more!=null){ readForm(); S.edit.moreAuthor=+d.more; renderModal(); return; }
   if(d.awsrc){ S.awSrc=d.awsrc; render(); return; }
-  if(d.ng!=null){ S.next.genre=d.ng; S.pickId=null; render(); return; }
+  if(d.ng!=null){ S.f.genre=d.ng; S.moreOpen=true; S.pickId=null; render(); return; }
   if(d.planmonth){ S.planKey=d.planmonth; render(); $("#main").scrollTop=0; return; }
   if(d.py){ S.planYear=+d.py; render(); return; }
   if(d.act){
@@ -1972,7 +2006,7 @@ document.addEventListener("click", async e=>{
       case "del-yes": { const b=S.edit; try{ await removeItem(b.id,b._doc); toast("Borttagen"); S.edit=null; S.confirmDel=false; renderModal(); }catch(_){} return; }
     }
   }
-  if(d.phase!=null){ S.f.phase=d.phase; S.f.status=""; S.f.limit=150; render(); return; }
+  if(d.phase!=null){ S.f.phase=d.phase; S.f.status=""; S.pickId=null; S.f.limit=150; render(); return; }
   if(d.book){ openBook(d.book); return; }
   if(d.scope){ S.statScope=d.scope; render(); return; }
   if(d.ser){ S.serFilter=d.ser; render(); return; }
