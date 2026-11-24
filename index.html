@@ -1241,7 +1241,7 @@ function renderModal(){
       ${b.read?`<button class="btn" data-act="reread">Jag vill läsa den igen</button>`:""}
       ${!b.read?`<button class="btn" data-act="start">Börja läsa idag</button>`:""}
       ${!b.read?`<button class="btn" data-act="finish">Markera som läst idag</button>`:""}
-      ${!b.read&&b.status!=="Lånad"&&isEpubOrUnknown(b)?`<button class="btn" data-act="loan">Lånad idag</button>`:""}
+      ${!b.read&&b.status!=="Lånad"&&!isBok(b)&&b.source!=="Lokal fil"?`<button class="btn" data-act="loan">Lånad idag</button>`:""}
     </div>`:""}
     ${b.id&&seriesOf(b)?`<div class="small">Serie: ${seriesLink(seriesOf(b).name, seriesOf(b).name+(seriesOf(b).num?" "+numLabel(seriesOf(b).num):""))}</div>`:""}
     ${(b.reads&&b.reads.length)||b.reread?`<div class="small muted">${b.reread&&!b.read?"<b>Läses om.</b> ":""}${(b.reads||[]).length?"Tidigare läst: "+(b.reads||[]).map(r=>esc(fmtDate(r.read))).join(", "):""}</div>`:""}
@@ -1271,12 +1271,12 @@ function renderModal(){
       <label>Typ<select id="e_type"><option value="bok" ${kindOf(b)!=="novella"?"selected":""}>Roman</option><option value="novella" ${kindOf(b)==="novella"?"selected":""}>Novell</option></select></label>
       `:""}
       ${!b.series&&seriesOf(b)?`<p class="small muted" style="grid-column:1/-1;margin:0">Förslag från ${esc(seriesOf(b).src||"Series-fliken")}: <b>${esc(seriesOf(b).name)}</b> <button type="button" class="btn small" data-act="useseries" style="font-size:13px;padding:4px 8px">Använd</button></p>`:""}
-      <label>Status<select id="e_status">${STATUSES.map(s=>`<option ${b.status===s?"selected":""} value="${esc(s)}">${s||"–"}</option>`).join("")}</select></label>
-      ${pick("source","Källa",b.source,sources)}
       <label>Format<select id="e_format">${[...new Set(["","EPUB","Bok",b.format||""])].map(v=>`<option value="${esc(v)}" ${String(b.format||"")===v?"selected":""}>${v==="Bok"?"Fysisk bok":v||"–"}</option>`).join("")}</select></label>
-      ${isEpubOrUnknown(b)?`<label style="grid-column:1">Libby<select id="e_libby"><option value="">Vet inte</option><option value="ja" ${b.libby==="ja"?"selected":""}>Ja, finns</option><option value="nej" ${b.libby==="nej"?"selected":""}>Nej</option><option value="notify" ${b.libby==="notify"?"selected":""}>🔔 Notify</option></select></label>`:""}
-      ${isEpubOrUnknown(b)?inp("loaned","Lånedatum","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"'):""}
-      ${!isEpubOrUnknown(b)?"":loanDays(b)?(b.loaned&&/^\d{4}-\d{2}-\d{2}$/.test(b.loaned)?`<p class="small muted" style="grid-column:1/-1;margin:0">Lämnas tillbaka ${esc(fmtDate(addDaysISO(b.loaned,loanDays(b))))} (${loanDays(b)} dagars lånetid på ${esc(b.source)}).</p>`:(b.due?`<p class="small muted" style="grid-column:1/-1;margin:0">Lämnas tillbaka ${esc(fmtDate(b.due))}.</p>`:"")):inp("due","Lämnas tillbaka","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}" title="Källan har ingen lånetid inlagd under Bibliotek, så skriv datumet själv"')}
+      <label>Status<select id="e_status">${statusOpts(b).map(s=>`<option ${b.status===s?"selected":""} value="${esc(s)}">${s||"–"}</option>`).join("")}</select></label>
+      <label>Källa<select id="e_source">${sourceOpts(b).map(s=>`<option ${String(b.source||"")===s?"selected":""} value="${esc(s)}">${s?esc(s==="Köpt"||s==="Lånad"?s+" (fysisk bok)":s):"–"}</option>`).join("")}</select></label>
+      ${showLibby(b)?`<label style="grid-column:1">Libby<select id="e_libby"><option value="">Vet inte</option><option value="ja" ${b.libby==="ja"?"selected":""}>Ja, finns</option><option value="nej" ${b.libby==="nej"?"selected":""}>Nej</option><option value="notify" ${b.libby==="notify"?"selected":""}>🔔 Notify</option></select></label>`:""}
+      ${showLoan(b)?(showLibby(b)?inp:inpFirst)("loaned","Lånedatum","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"'):""}
+      ${!showLoan(b)?"":loanDays(b)?(b.loaned&&/^\d{4}-\d{2}-\d{2}$/.test(b.loaned)?`<p class="small muted" style="grid-column:1/-1;margin:0">Lämnas tillbaka ${esc(fmtDate(addDaysISO(b.loaned,loanDays(b))))} (${loanDays(b)} dagars lånetid på ${esc(b.source)}).</p>`:(b.due?`<p class="small muted" style="grid-column:1/-1;margin:0">Lämnas tillbaka ${esc(fmtDate(b.due))}.</p>`:"")):inp("due","Lämnas tillbaka","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}" title="Källan har ingen lånetid inlagd under Bibliotek, så skriv datumet själv"')}
       ${!b.read?planSelect(b):""}
       ${(b.read?inpFirst:inp)("started","Började läsa","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"')}
       ${inp("read","Läst klart","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"')}
@@ -1289,6 +1289,17 @@ function renderModal(){
     </div>
   </div></div>`;
 }
+// Format → status → source. Saved values outside the lists are kept and shown.
+const EPUB_ST=["","Ska lånas","Waitlist","On hold","Suspended","Lånad","Lokal fil","Kanske","Backlog","Gav upp"];
+const BOK_ST=["","Ska köpas","Köpt","Lånad","Kanske","Backlog","Gav upp"];
+function isBok(b){ return String(b.format||"").trim().toLowerCase()==="bok"; }
+function statusOpts(b){ const l=isBok(b)?BOK_ST:EPUB_ST; return b.status&&!l.includes(b.status)?[...l,b.status]:l; }
+function sourceOpts(b){
+  const l=isBok(b)?["","Köpt","Lånad"]:["",...S.libs.filter(x=>x.active!==false).map(x=>x.name),"Lokal fil"];
+  return b.source&&!l.includes(b.source)?[...l,b.source]:l;
+}
+function showLibby(b){ return !isBok(b) && !["Lokal fil","Köpt","Lånad"].includes(b.status) && b.source!=="Lokal fil"; }
+function showLoan(b){ return !isBok(b) && b.status==="Lånad" && b.source!=="Lokal fil"; }
 function planOf(b){ const t=norm(b.title); if(!t) return ""; return Object.keys(S.plans||{}).sort().reverse().find(k=>(S.plans[k]||[]).some(i=>norm(i.title)===t))||""; }
 function planSelect(b){
   const cur=b.plan!==undefined?b.plan:planOf(b); const d=new Date(); const keys=[];
@@ -1681,7 +1692,10 @@ document.addEventListener("change", e=>{
   if(id==="fAuth"){ S.f.auth=e.target.value; render(); }
   if(id==="importFile" && e.target.files && e.target.files[0]){ e.target.files[0].text().then(importData); return; }
   if(id==="statYear"){ S.statYear=+e.target.value; render(); }
-  if((id==="e_format"||id==="e_source"||id==="e_loaned") && S.edit && e.target.value!=="__new"){ readForm(); renderModal(); return; }
+  if((id==="e_format"||id==="e_source"||id==="e_loaned"||id==="e_status") && S.edit && e.target.value!=="__new"){ readForm(); const b=S.edit;
+    if(id==="e_status"){ if(isBok(b) && (b.status==="Köpt"||b.status==="Lånad")) b.source=b.status; if(!isBok(b) && b.status==="Lokal fil") b.source="Lokal fil"; }
+    if(id==="e_format" && b.source && !sourceOpts({...b,source:""}).includes(b.source) && ["Köpt","Lånad","Lokal fil"].includes(b.source)) b.source="";
+    renderModal(); return; }
   if(e.target.dataset && e.target.dataset.pick && e.target.value==="__new"){
     const inpEl=document.createElement("input"); inpEl.type="text"; inpEl.id=e.target.id; inpEl.placeholder="Skriv ny …";
     e.target.replaceWith(inpEl); inpEl.focus(); return;
