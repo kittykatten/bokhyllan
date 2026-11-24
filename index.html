@@ -1242,8 +1242,6 @@ function renderModal(){
       ${!b.read?`<button class="btn" data-act="start">Börja läsa idag</button>`:""}
       ${!b.read?`<button class="btn" data-act="finish">Markera som läst idag</button>`:""}
       ${!b.read&&b.status!=="Lånad"?`<button class="btn" data-act="loan">Lånad idag</button>`:""}
-      ${b.title?`<a class="btn" href="${esc(adlibrisUrl(b))}" target="_blank" rel="noopener" style="text-decoration:none">Sök på Adlibris ↗</a>`:""}
-      ${S.ol[b.id]&&S.ol[b.id].key?`<a class="btn" href="https://openlibrary.org${esc(S.ol[b.id].key)}" target="_blank" rel="noopener" style="text-decoration:none">Open Library ↗</a>`:""}
     </div>`:""}
     ${b.id&&seriesOf(b)?`<div class="small">Serie: ${seriesLink(seriesOf(b).name, seriesOf(b).name+(seriesOf(b).num?" "+numLabel(seriesOf(b).num):""))}</div>`:""}
     ${(b.reads&&b.reads.length)||b.reread?`<div class="small muted">${b.reread&&!b.read?"<b>Läses om.</b> ":""}${(b.reads||[]).length?"Tidigare läst: "+(b.reads||[]).map(r=>esc(fmtDate(r.read))).join(", "):""}</div>`:""}
