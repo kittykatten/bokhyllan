@@ -511,6 +511,7 @@ function pickChunk(prefix){
 }
 async function putItem(prefix, id, item, docId){
   const clean = {...item}; delete clean.id; delete clean._doc;
+  for(const k of Object.keys(clean)) if(clean[k]===undefined) delete clean[k];
   docId = docId || pickChunk(prefix);
   const ref = S.db.doc("lib/"+docId);
   try{
@@ -1828,8 +1829,8 @@ window.addEventListener("hashchange", render);
 const FB_APP=initializeApp(FIREBASE_CONFIG);
 const AUTH=getAuth(FB_APP);
 let FS;
-try{ FS=initializeFirestore(FB_APP,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})}); }
-catch(_){ FS=initializeFirestore(FB_APP,{}); }
+try{ FS=initializeFirestore(FB_APP,{ignoreUndefinedProperties:true, localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})}); }
+catch(_){ FS=initializeFirestore(FB_APP,{ignoreUndefinedProperties:true}); }
 function makeDb(uid){
   const base="users/"+uid+"/";
   const doc=p=>{ const r=fdoc(FS, base+p); return {
