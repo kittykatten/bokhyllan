@@ -98,6 +98,8 @@ input[type=search]{flex:1;min-width:180px}
 .chart .bar.now{fill:var(--star)}
 .chart .bar.nov{fill:var(--nov)} .chart .bar.nov.now2{fill:var(--nov-now)}
 .tile .delta{font-size:13px;color:var(--muted);margin-top:4px}
+.hbar.click{cursor:pointer;border-radius:6px} .hbar.click:hover,.hbar.click[aria-pressed="true"]{background:var(--accent-soft)}
+.tile.click{cursor:pointer} .tile.click:hover{border-color:var(--accent)}
 .legend{display:flex;gap:14px;font-size:13px;color:var(--muted);margin-top:4px} .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 .chart .bar:hover{opacity:.8}
 .chart .grid{stroke:var(--line)}
@@ -431,6 +433,7 @@ async function maybeEnrich(){
     // Corrections Kitty has given by hand.
     if(/^\s*audrain\.?\s*,?\s*a\.?\s*$/i.test(b.author||"")) put(b,{author:"Ashley Audrain", seriesTried:true, wdSeries:null});
     if(b.status==="Backlog") put(b,{status:""});
+    if(/^nedladdad$/i.test(String(b.source||"").trim())) put(b,{source:"Lokal fil"});
     if(b.dropped && DROP_RENAME[b.dropped.reason]) put(b,{dropped:{...b.dropped, reason:DROP_RENAME[b.dropped.reason]}});
     if(phase(b)==="dnf" && !b.dropped && !b.droppedGuessed){ const fl=b.extra&&b.extra.Flyttad?parseDate(b.extra.Flyttad):""; put(b,{dropped:{date:/^\d{4}-\d{2}-\d{2}$/.test(fl)?fl:"", reason:guessDropReason(b)}, droppedGuessed:true}); }
     if(!b.libby && b.extra && b.extra.Bi){ const v=String(b.extra.Bi).trim().toLowerCase(); const m=v==="yes"?"ja":(v==="no"||v==="not")?"nej":v==="notify"?"notify":""; if(m) put(b,{libby:m}); }
@@ -990,7 +993,7 @@ function homeView(){
   const yb=sum(books[Y]), yp=sum(pages[Y]), lb=sum(books[Y-1],M+1), lp=sum(pages[Y-1],M+1), yn=sum(nov[Y]);
   const delta=(a,b)=>{ if(!b) return ""; const d=a-b; return `<div class="delta">${d>0?"▲ +":d<0?"▼ −":"± "}${fmtN(Math.abs(d))} mot samma tid ${Y-1} (${fmtN(b)})</div>`; };
   const k=yymm(now); const plan=S.plans[k]||[]; const planRead=plan.filter(i=>{const b=findBook(i.title);return b&&phase(b)==="read";}).length;
-  const nIssues=cleanProposals().length;
+  const nIssues=cleanProposals().length+newBookList().length;
   const dueTxt=b=>{ const d=daysUntil(b.due); if(d==null) return isEpubOrUnknown(b)?`<span class="muted">Saknar återlämningsdatum</span>`:`<span class="muted">Fysisk bok${b.source?" · "+esc(b.source):""}</span>`; const t=d<0?`Försenad ${-d} d`:d===0?"Ska lämnas idag":d===1?"Ska lämnas imorgon":`Ska lämnas om ${d} dagar`; return `<span class="${d<=3?"due-soon":""}">${t}</span> · ${esc(b.source||"")}`; };
   const holdsByLib={}; holds.forEach(b=>{ (holdsByLib[b.source||"Okänt bibliotek"] ||= []).push(b); });
   return `
@@ -999,7 +1002,7 @@ function homeView(){
     <div class="tile"><div class="v">${fmtN(yp)}</div><div class="l">sidor ${Y}</div>${delta(yp,lp)}</div>
     <div class="tile"><div class="v">${planRead} / ${plan.length}</div><div class="l">av ${MON_SV_LONG[M]}s plan lästa</div></div>
   </div>
-  ${nIssues?`<a class="notice" href="#stada" style="text-decoration:none;color:inherit;display:block">Jag har ${nIssues} förslag på hur listan kan städas. <b>Gå till Städa →</b></a>`:""}
+  ${nIssues?`<a class="notice" href="#stada" style="text-decoration:none;color:inherit;display:block">Du har ${nIssues} saker i Inkorgen att titta pås. <b>Gå till Städa →</b></a>`:""}
   <div class="hgrid">
     <div class="card"><div class="sec-h"><h3>Läser nu</h3><span class="muted small">${reading.length}</span></div>
       ${reading.length?reading.map(b=>miniRow(b,`${authorLink(b.author)} · började ${esc(fmtDate(b.started))}`)).join(""):`<p class="muted small">Inget just nu. <a href="#nasta">Hitta nästa bok</a></p>`}</div>
@@ -1014,7 +1017,7 @@ function homeView(){
 
 /* --- more --- */
 function moreView(){
-  const n=cleanProposals().length;
+  const n=cleanProposals().length+newBookList().length;
   const it=(h,t,d)=>`<a href="#${h}"><b>${t}</b><span>${d}</span></a>`;
   return `<h2 style="font-size:22px">Mer</h2><div class="menu">
     ${it("serier","Serier","Påbörjade, olästa och färdiga serier")}
@@ -1022,7 +1025,7 @@ function moreView(){
     ${it("priser","Priser","Hugo, Nebula och Goodreads Choice")}
     ${it("bibliotek","Bibliotek","Köer och lån per bibliotek")}
     ${it("bortvalda","Bortvalda",`Böcker du har flyttat från listan (${S.books.filter(b=>phase(b)==="dnf").length})`)}
-    <a href="#stada"><b>Städa${n?`<span class="badge">${n}</span>`:""}</b><span>Saker i listan som ser fel ut</span></a>
+    <a href="#stada"><b>Inkorg${n?`<span class="badge">${n}</span>`:""}</b><span>Nya böcker, förslag och saker som behöver dig</span></a>
     ${it("import","Säkerhetskopia","Ladda ner allt som en fil, eller läs in från fil")}
   </div>
   <div class="card row" style="margin-top:8px"><span class="grow small">Inloggad som <b>${esc(S.authUser&&S.authUser.email||"")}</b></span><button class="btn" data-act="logout">Logga ut</button></div>`;
@@ -1173,7 +1176,7 @@ async function cleanIgnore(keys){
   const add={}; keys.filter(Boolean).forEach(k=>add[k]=true);
   try{ await queued("cleanState",()=>S.db.doc("lib/cleanState").update({ignore:add})); }catch(e){ dbFail(e); return; }
   S.cleanIgnore={...(S.cleanIgnore||{}), ...add}; cleanIssues._r=null; cleanProposals._r=null; render();
-  toast(keys.length>1?keys.length+" borttagna från Städa.":"Borttaget från Städa.");
+  toast(keys.length>1?keys.length+" borttagna från Inkorgen.":"Borttaget från Inkorgen.");
 }
 async function applyProposals(which){
   const skip=S.cleanSkip||new Set();
@@ -1224,10 +1227,10 @@ function cleanView(){
     if(x.key==="titles") return sec(x.key,x.title,x.books.length, x.books.length?`<p class="muted small" style="margin-top:0">Engelska titlar skrevs om till engelsk stil. Ångra de som blev fel.</p>`+x.books.map(b=>`<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><div class="grow"><b>${esc(b.title)}</b><div class="muted small">var: ${esc(b.titleOrig)}</div></div><button class="btn small" data-undotitle="${esc(b.id)}">Ångra</button></div>`).join(""):`<p class="muted small">Inga.</p>`);
     return sec(x.key,x.title,x.count, `<p class="muted small" style="margin-top:0">Här finns inget säkert förslag. Öppna boken och fyll i själv, eller tryck ✕ så visas den inte här igen.</p>`+bookList(x.books, x.key==="noname"?(b=>"#"+esc(firstNum(b.num))):x.key==="oddlang"?(b=>esc([b.lang,b.origLang].filter(Boolean).join(" / "))):x.key==="epub"?(b=>"Format: "+esc(b.format)):null, x.key));
   }).join("");
-  return `<h2 style="font-size:22px">Städa</h2>
+  return `<h2 style="font-size:22px">Inkorg</h2>${newBooksSection()}
   ${P.length?`<div class="notice row"><span class="grow">Jag har gjort <b>${P.length} förslag</b> utifrån det som redan finns i din lista. Gå igenom dem, ta bort bocken på dem som är fel och godkänn resten. Dubbletter måste du välja själv.</span><button class="btn primary" data-apply="all" ${active.length?"":"disabled"}>Genomför ${active.length}</button></div>`:(info?`<p class="muted">Inga förslag just nu.</p>`:"")}
   ${propSecs}
-  ${info?`<h3 style="font-size:17px;margin-top:8px">Att titta på själv</h3>${info}`:(P.length?"":`<p class="muted">Allt är städat. ✨</p>`)}`;
+  ${info?`<h3 style="font-size:17px;margin-top:8px">Att titta på själv</h3>${info}`:(P.length||newBookList().length?"":`<p class="muted">Inkorgen är tom. ✨</p>`)}`;
 }
 /* --- author --- */
 function authorView(){
@@ -1341,6 +1344,47 @@ function sourceOpts(b){
 }
 function showLibby(b){ return !isBok(b) && !["Lokal fil","Köpt","Lånad"].includes(b.status) && b.source!=="Lokal fil"; }
 function showLoan(b){ return !isBok(b) && b.status==="Lånad" && b.source!=="Lokal fil"; }
+// New books by authors read in the last year (Open Library + publishers, checked 2026-11-24). Shown in Inkorg until added or declined.
+const NEW_BOOKS=[
+ ["T. Kingfisher","Hemlock and Silver",2025],["T. Kingfisher","Snake-Eater",2025],
+ ["Fredrik Backman","Mina vänner",2025,"Svenska"],
+ ["Ruth Ware","Zero Days",2023],["Ruth Ware","One Perfect Couple",2024],["Ruth Ware","The Woman in Suite 11",2025],
+ ["Josh Silver","HappyHead",2023],["Josh Silver","Dead Happy",2024],["Josh Silver","Traumaland",2025],
+ ["Freida McFadden","The Housemaid's Secret",2023],["Freida McFadden","The Housemaid Is Watching",2024],["Freida McFadden","The Housemaid's Wedding",2026],["Freida McFadden","Dear Debbie",2026],["Freida McFadden","The Divorce",2026],
+ ["Veronica Roth","Arch-Conspirator",2023],["Veronica Roth","When Among Crows",2024],
+ ["Paul Tremblay","The Beast You Are",2023],["Paul Tremblay","Horror Movie",2024],
+ ["Amor Towles","Table for Two",2024],
+ ["Robyn Harding","Haters",2024],
+ ["Mike Bockoven","Killing It",2023],["Mike Bockoven","Come Knocking",2025],
+ ["Hilary Leichter","Terrace Story",2023],
+ ["Asako Yuzuki","Hooked",2026],
+ ["Freya Marske","Swordcrossed",2024],
+ ["Naomi Novik","Buried Deep and Other Stories",2024],
+ ["Ann Leckie","Lake of Souls",2024],
+ ["Megan Giddings","Meet Me at the Crossroads",2025],
+ ["Amal El-Mohtar","Seasons of Glass and Iron",2026],
+ ["Annalee Newitz","Stories Are Weapons",2024],
+ ["Ocean Vuong","The Emperor of Gladness",2025],
+];
+function newBookList(){
+  const IG=S.cleanIgnore||{}; const have=new Set(S.books.map(b=>norm(b.title).replace(/^(the|a|an) /,"")));
+  return NEW_BOOKS.map(([author,title,year,lang])=>({author,title,year,lang:lang||"Engelska",key:"p:new:"+norm(author)+"|"+norm(title)}))
+    .filter(n=>!IG[n.key] && !have.has(norm(n.title).replace(/^(the|a|an) /,"")));
+}
+function newBooksSection(){
+  const l=newBookList(); if(!l.length) return "";
+  const byA={}; l.forEach(n=>(byA[n.author] ||= []).push(n));
+  return `<div class="card"><div class="sec-h"><h3>Nya böcker av författare du läst senaste året</h3><span class="muted small">${l.length}</span></div>
+    <p class="muted small" style="margin-top:0">Lägg till det som lockar, säg nej tack till resten.</p>
+    ${Object.entries(byA).map(([a,list])=>`<div style="margin-top:10px"><b class="small">${esc(a)}</b>${list.map(n=>`<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><div class="grow">${esc(n.title)} <span class="muted small">${n.year}</span></div><button class="chip" data-addnew="${esc(n.key)}">+ Lägg till</button><button class="chip" data-ignore="${esc(n.key)}">✕ Nej tack</button></div>`).join("")}</div>`).join("")}</div>`;
+}
+async function addNewBook(key){
+  const n=newBookList().find(x=>x.key===key); if(!n) return;
+  const like=S.books.find(b=>authorKey(b.author)===authorKey(n.author)) || S.books.find(b=>norm(b.author).split(" ").pop()===norm(n.author).split(" ").pop());
+  const item={kind:"bok", title:n.title, author:n.author, gender:(like&&like.gender)||"", lang:n.lang, origLang:n.lang==="Svenska"?"Svenska":((like&&like.origLang)||n.lang), year:n.year, pages:"",
+    status:"", source:"", format:"", started:"", read:"", due:"", comment:"", series:"", num:"", rating:0, extra:{}, genres:(like&&like.genres)||[], ratingForm:{}, moreAuthor:0, added:todayISO(), libby:"", loaned:""};
+  try{ await putItem("books", uid("b"), item); toast(n.title+" ligger nu bland Att läsa."); }catch(_){}
+}
 function planOf(b){ const t=norm(b.title); if(!t) return ""; return Object.keys(S.plans||{}).sort().reverse().find(k=>(S.plans[k]||[]).some(i=>norm(i.title)===t))||""; }
 function planSelect(b){
   const cur=b.plan!==undefined?b.plan:planOf(b); const d=new Date(); const keys=[];
@@ -1448,9 +1492,9 @@ function vbars(data, opts={}){
 }
 function niceStep(max){ const raw=max/4; const p=Math.pow(10,Math.floor(Math.log10(raw))); const n=raw/p; return (n<=1?1:n<=2?2:n<=5?5:10)*p; }
 function fmtN(v){ return Math.round(v).toLocaleString("sv-SE"); }
-function hbars(entries, total){
+function hbars(entries, total, id){
   const max=Math.max(1,...entries.map(e=>e[1]));
-  return `<div class="hbars">${entries.map(([k,v])=>`<div class="hbar" title="${esc(k)}: ${v}${total?` (${Math.round(v/total*100)} %)`:""}"><span class="lab">${esc(k)}</span><span class="track"><span class="fill" style="width:${v/max*100}%;display:block"></span></span><span class="num">${v}</span></div>`).join("")}</div>`;
+  return `<div class="hbars">${entries.map(([k,v,key])=>`<div class="hbar${id?" click":""}" ${id?`data-drill="${esc(id+"|"+(key!=null?key:k))}" role="button" tabindex="0" aria-pressed="${S.statDrill===id+"|"+(key!=null?key:k)}"`:""} title="${esc(k)}: ${v}${total?` (${Math.round(v/total*100)} %)`:""}${id?" · klicka för att se böckerna":""}"><span class="lab">${esc(k)}</span><span class="track"><span class="fill" style="width:${v/max*100}%;display:block"></span></span><span class="num">${v}</span></div>`).join("")}</div>`;
 }
 function tally(list, fn, limit=8){
   const c={}; list.forEach(b=>{ const k=fn(b); if(k) c[k]=(c[k]||0)+1; });
@@ -1477,6 +1521,14 @@ function statsView(){
   const dec=b=>{ const y=+b.year; if(!y) return ""; if(y<1920) return "före 1920"; return Math.floor(y/10)*10+"-talet"; };
   const decEntries = tally(base,dec,20).sort((a,b)=>(a[0]==="före 1920"?0:parseInt(a[0]))-(b[0]==="före 1920"?0:parseInt(b[0])));
   const gl=GENDER;
+  const DIM={lang:b=>langName(b.lang), orig:b=>langName(b.origLang), gender:b=>gl[b.gender]||"", dec, genre:b=>genresOf(b), source:b=>b.source, rating:b=>b.rating?String(Math.round(+b.rating)):""};
+  const T={lang:"Språk jag läste på", orig:"Originalspråk", gender:"Författarens kön", dec:"Utgivningsdecennium", genre:"Genre", source:"Källa", rating:"Betyg", rated:"Betygsatta böcker "+sel};
+  let drill="";
+  if(S.statDrill){ const [id,key]=S.statDrill.split("|"); let list;
+    if(id==="rated") list=rated.slice().sort((a,b)=>b.rating-a.rating||String(b.read).localeCompare(String(a.read)));
+    else if(DIM[id]){ list=base.filter(b=>{ const v=DIM[id](b); return Array.isArray(v)?v.includes(key):String(v)===key; }).sort((a,b)=>(+b.rating||0)-(+a.rating||0)||String(b.read).localeCompare(String(a.read))); }
+    if(list) drill=`<div class="card" id="drill"><div class="sec-h"><h3>${esc(T[id]||"")}${id==="rated"?"":": "+esc(id==="rating"?stars(+key)+" ("+key+")":key)}</h3><span class="row" style="gap:8px"><span class="muted small">${list.length} böcker</span><button class="btn small" data-drill="${esc(S.statDrill)}">Stäng</button></span></div>
+      ${list.length?`<div class="list">${list.map((b,i)=>id==="rated"?bookRow(b).replace('<div class="item"',`<div class="item" style="position:relative"`).replace('<span class="stripe',`<span class="muted small" style="min-width:1.6em;text-align:right">${i+1}.</span><span class="stripe`):bookRow(b)).join("")}</div>`:`<p class="muted small">Inga böcker.</p>`}</div>`; }
   return `
   <div class="row"><h2 class="grow" style="font-size:22px">Statistik</h2>
     <select id="statYear" aria-label="År">${years.slice().reverse().map(y=>`<option ${y===sel?"selected":""}>${y}</option>`).join("")}</select></div>
@@ -1484,7 +1536,7 @@ function statsView(){
     <div class="tile"><div class="v">${fmtN(yBooks)}</div><div class="l">böcker ${sel}${yNov?`<br>${fmtN(yBooks-yNov)} romaner · ${fmtN(yNov)} noveller`:""}</div>${delta(yBooks,pB)}</div>
     <div class="tile"><div class="v">${fmtN(yPages)}</div><div class="l">sidor ${sel}</div>${delta(yPages,pP)}</div>
     <div class="tile"><div class="v">${((yBooks-yNov)/monthsGone).toLocaleString("sv-SE",{maximumFractionDigits:1})}</div><div class="l">${yNov?"romaner":"böcker"} per månad</div></div>
-    <div class="tile"><div class="v">${avg?avg.toLocaleString("sv-SE",{maximumFractionDigits:1}):"–"}</div><div class="l">snittbetyg ${sel} (${rated.length} betygsatta)</div></div>
+    <div class="tile${rated.length?" click":""}" ${rated.length?`data-drill="rated|" role="button" tabindex="0" title="Visa alla betygsatta böcker ${sel}, rankade"`:""}><div class="v">${avg?avg.toLocaleString("sv-SE",{maximumFractionDigits:1}):"–"}</div><div class="l">snittbetyg ${sel} (${rated.length} betygsatta)</div></div>
   </div>
   <div class="card"><div class="sec-h"><h3>Lästa böcker per månad ${sel}</h3></div>
     ${vbars(MON_SV.map((l,i)=>({l,v:(books[sel]||[])[i]||0,n:(nov[sel]||[])[i]||0,title:MON_SV_LONG[i]+" "+sel,now:sel===Y&&i===now.getMonth()})),{label:"Böcker per månad "+sel})}${legend}</div>
@@ -1495,14 +1547,14 @@ function statsView(){
   <div class="row"><h3 class="grow" style="font-size:17px">Fördelning</h3>
     <div class="chips"><button class="chip" data-scope="year" aria-pressed="${scope==="year"}">${sel}</button><button class="chip" data-scope="all" aria-pressed="${scope==="all"}">Alla lästa i appen</button></div></div>
   ${base.length?`<div class="grid2">
-    <div class="card"><div class="sec-h"><h3>Språk jag läste på</h3></div>${hbars(tally(base,b=>langName(b.lang)),base.length)}</div>
-    <div class="card"><div class="sec-h"><h3>Originalspråk</h3></div>${hbars(tally(base,b=>langName(b.origLang)),base.length)}</div>
-    <div class="card"><div class="sec-h"><h3>Författarens kön</h3></div>${hbars(tally(base,b=>gl[b.gender]||""),base.length)}</div>
-    <div class="card"><div class="sec-h"><h3>Utgivningsdecennium</h3></div>${hbars(decEntries,base.length)}</div>
-    <div class="card"><div class="sec-h"><h3>Genre</h3></div>${hbars(tally(base.flatMap(b=>genresOf(b).map(g=>({g}))),x=>x.g,10),base.length)}<p class="muted small">Från Goodreads Choice eller Open Library. En bok kan ha två genrer, och böcker utan uppgift räknas inte.</p></div>
-    <div class="card"><div class="sec-h"><h3>Källa</h3></div>${hbars(tally(base,b=>b.source),base.length)}</div>
-    <div class="card"><div class="sec-h"><h3>Betyg</h3></div>${hbars([5,4,3,2,1].map(r=>[stars(r),base.filter(b=>b.rating&&Math.round(+b.rating)===r).length]),base.length)}<p class="muted small">${base.filter(b=>!b.rating && String(b.read)>=RATING_FROM).length} lästa sedan 2026 utan betyg</p></div>
-  </div>`:`<div class="empty">Inga lästa böcker med datum ${scope==="year"?sel:""} i appen.</div>`}
+    <div class="card"><div class="sec-h"><h3>Språk jag läste på</h3></div>${hbars(tally(base,b=>langName(b.lang)),base.length,"lang")}</div>
+    <div class="card"><div class="sec-h"><h3>Originalspråk</h3></div>${hbars(tally(base,b=>langName(b.origLang)),base.length,"orig")}</div>
+    <div class="card"><div class="sec-h"><h3>Författarens kön</h3></div>${hbars(tally(base,b=>gl[b.gender]||""),base.length,"gender")}</div>
+    <div class="card"><div class="sec-h"><h3>Utgivningsdecennium</h3></div>${hbars(decEntries,base.length,"dec")}</div>
+    <div class="card"><div class="sec-h"><h3>Genre</h3></div>${hbars(tally(base.flatMap(b=>genresOf(b).map(g=>({g}))),x=>x.g,10),base.length,"genre")}<p class="muted small">Från Goodreads Choice eller Open Library. En bok kan ha två genrer, och böcker utan uppgift räknas inte.</p></div>
+    <div class="card"><div class="sec-h"><h3>Källa</h3></div>${hbars(tally(base,b=>b.source),base.length,"source")}</div>
+    <div class="card"><div class="sec-h"><h3>Betyg</h3></div>${hbars([5,4,3,2,1].map(r=>[stars(r),base.filter(b=>b.rating&&Math.round(+b.rating)===r).length,String(r)]),base.length,"rating")}<p class="muted small">${base.filter(b=>!b.rating && String(b.read)>=RATING_FROM).length} lästa sedan 2026 utan betyg</p></div>
+  </div>${drill}`:`<div class="empty">Inga lästa böcker med datum ${scope==="year"?sel:""} i appen.</div>`}
   <p class="muted small">Böcker och sidor per månad kommer från fliken Statistik i arket fram till importen, och från läsdatumen i appen efter det. Noveller räknas från böckerna i appen (typ Novell). Sidorna räknas alltid fullt. Fördelningarna bygger på böckerna i appen som har ett läsdatum.</p>`;
 }
 
@@ -1748,10 +1800,10 @@ document.addEventListener("change", e=>{
 document.addEventListener("keydown", e=>{
   if(e.key==="Enter" && e.target.id==="e_find"){ e.preventDefault(); runFind(); return; }
   if(e.key==="Escape" && S.edit){ S.edit=null; S.confirmDel=false; renderModal(); }
-  if((e.key==="Enter"||e.key===" ") && e.target.matches("[role=button][data-book],[role=button][data-planadd],[role=button][data-planmonth],[role=button][data-seropen],[role=button][data-cleanopen],[role=button][data-pickfound]")){ e.preventDefault(); e.target.click(); }
+  if((e.key==="Enter"||e.key===" ") && e.target.matches("[role=button][data-drill],[role=button][data-book],[role=button][data-planadd],[role=button][data-planmonth],[role=button][data-seropen],[role=button][data-cleanopen],[role=button][data-pickfound]")){ e.preventDefault(); e.target.click(); }
 });
 document.addEventListener("click", async e=>{
-  const t=e.target.closest("[data-act],[data-phase],[data-book],[data-rate],[data-scope],[data-ser],[data-serread],[data-aw],[data-plan],[data-planrm],[data-planadd],[data-q],[data-genre],[data-awsrc],[data-ng],[data-planmonth],[data-py],[data-more],[data-author],[data-af],[data-seropen],[data-cleanopen],[data-fixauthor],[data-undotitle],[data-libsave],[data-libretire],[data-abandon],[data-apply],[data-skip],[data-gotoseries],[data-dupch],[data-pickfound],[data-ignore],[data-dropf]");
+  const t=e.target.closest("[data-act],[data-phase],[data-book],[data-rate],[data-scope],[data-ser],[data-serread],[data-aw],[data-plan],[data-planrm],[data-planadd],[data-q],[data-genre],[data-awsrc],[data-ng],[data-planmonth],[data-py],[data-more],[data-author],[data-af],[data-seropen],[data-cleanopen],[data-fixauthor],[data-undotitle],[data-libsave],[data-libretire],[data-abandon],[data-apply],[data-skip],[data-gotoseries],[data-dupch],[data-pickfound],[data-ignore],[data-dropf],[data-addnew],[data-drill]");
   if(!t) return;
   const d=t.dataset;
   if(d.act==="close-bg" && e.target!==t) return;
@@ -1771,6 +1823,8 @@ document.addEventListener("click", async e=>{
     try{ await queued("seriesState",()=>S.db.doc("lib/seriesState").set({abandoned:ab})); toast(ab[k]?"Serien är markerad som avbruten. Dess olästa böcker föreslås inte längre i Nästa bok.":"Serien är aktiv igen."); }catch(e){ dbFail(e); } return; }
   if(d.pickfound!=null){ pickFound(+d.pickfound); return; }
   if(d.dupch){ S.dupChoice={...(S.dupChoice||{})}; S.dupChoice[d.dupch] = S.dupChoice[d.dupch]===d.v ? undefined : d.v; if(!S.dupChoice[d.dupch]) delete S.dupChoice[d.dupch]; render(); return; }
+  if(d.addnew){ await addNewBook(d.addnew); return; }
+  if(d.drill!=null){ S.statDrill=S.statDrill===d.drill?null:d.drill; render(); setTimeout(()=>{ const el=document.getElementById("drill"); if(el&&S.statDrill) el.scrollIntoView({behavior:"smooth",block:"start"}); },50); return; }
   if(d.dropf!=null){ S.dropF=d.dropf; render(); return; }
   if(d.ignore){ await cleanIgnore(d.ignore.split("\n")); return; }
   if(d.skip){ (S.cleanSkip ||= new Set()); S.cleanSkip.has(d.skip)?S.cleanSkip.delete(d.skip):S.cleanSkip.add(d.skip); render(); return; }
