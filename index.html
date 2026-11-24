@@ -473,6 +473,13 @@ async function maybeEnrich(){
     try{ await queued(doc, ()=>S.db.doc("lib/"+doc).update({items})); }catch(_){}
   }
   // Library card dates given by hand (only filled in if empty).
+  // One-time: books read in November 2026 belong to the November plan.
+  if(!((S.docs.cleanState&&S.docs.cleanState.seeded)||{}).plan2611 && !(S.seededNow ||= new Set()).has("plan2611")){
+    S.seededNow.add("plan2611");
+    const list=(S.plans["2611"]||[]).slice(); const have=new Set(list.map(i=>norm(i.title)));
+    S.books.filter(b=>allReads(b).some(d=>String(d).startsWith("2026-11")) && !have.has(norm(b.title))).forEach(b=>{ list.push({title:b.title,pages:b.pages||"",status:b.status||""}); have.add(norm(b.title)); });
+    try{ if(list.length!==(S.plans["2611"]||[]).length) await savePlans({...S.plans, "2611":list}); await queued("cleanState",()=>S.db.doc("lib/cleanState").update({seeded:{plan2611:true}})); }catch(_){}
+  }
   // Books Kitty asked to have added. Added once; if she deletes one it is not added again.
   const seeded=(S.docs.cleanState && S.docs.cleanState.seeded) || {};
   for(const sd of SEED_BOOKS){
