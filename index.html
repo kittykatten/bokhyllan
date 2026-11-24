@@ -269,7 +269,7 @@ const LANGS={eng:"engelska",en:"engelska",swe:"svenska",sv:"svenska",sve:"svensk
 function langName(c){ const k=String(c||"").trim(); const n=LANGS[k.toLowerCase()]||k; return n.charAt(0).toUpperCase()+n.slice(1); }
 function seriesInfo(b){
   if(b.series) return {series:b.series, num:b.num||""};
-  const t=norm(b.title); const s=S.series.find(x=>norm(x.title)===t);
+  const t=norm(b.title); const s=t?S.series.find(x=>norm(x.title)===t):null;
   return s ? {series:s.series, num:s.num||b.num||""} : (b.num?{series:"",num:b.num}:null);
 }
 function gcFor(b){ const t=norm(b.title); return S.gc.find(g=>norm(g.title)===t); }
@@ -279,7 +279,7 @@ function genreSuggest(b){
   return null;
 }
 function genresOf(b){ const s=genreSuggest(b); return s?s.list:[]; }
-function seriesTabFor(b){ const t=norm(b.title); return S.series.find(x=>norm(x.title)===t); }
+function seriesTabFor(b){ const t=norm(b.title); return t?S.series.find(x=>norm(x.title)===t):null; }
 function seriesOf(b){
   if(b.series){ const ps=parseSeriesField(b.series); if(ps.name) return {name:ps.name, num:b.num||ps.num||"", src:""}; }
   const st=seriesTabFor(b); if(st && st.series) return {name:st.series.trim(), num:st.num||b.num||"", src:""};
@@ -745,17 +745,40 @@ function bookRow(b){
 async function fetchJson(u){ const r=await fetch(u); if(!r.ok) throw new Error(r.status); return r.json(); }
 function httpsUrl(u){ return u ? String(u).replace(/^http:/,"https:").replace("&edge=curl","") : ""; }
 async function lookupIsbn(isbn){
-  try{ const d=await fetchJson("https://www.googleapis.com/books/v1/volumes?q=isbn:"+isbn);
-    const v=d.items&&d.items[0]&&d.items[0].volumeInfo;
-    if(v) return {title:v.title||"", author:(v.authors||[]).join(", "), pages:v.pageCount||"", year:(v.publishedDate||"").slice(0,4), lang:v.language?langName(v.language):"", coverUrl:httpsUrl(v.imageLinks&&(v.imageLinks.thumbnail||v.imageLinks.smallThumbnail))}; }catch(_){}
   try{ const d=await fetchJson("https://openlibrary.org/api/books?bibkeys=ISBN:"+isbn+"&format=json&jscmd=data");
     const v=d["ISBN:"+isbn];
     if(v) return {title:v.title||"", author:(v.authors||[]).map(a=>a.name).join(", "), pages:v.number_of_pages||"", year:((v.publish_date||"").match(/\d{4}/)||[""])[0], lang:"", coverUrl:v.cover&&v.cover.medium||""}; }catch(_){}
+  try{ const d=await fetchJson("https://www.googleapis.com/books/v1/volumes?q=isbn:"+isbn);
+    const v=d.items&&d.items[0]&&d.items[0].volumeInfo;
+    if(v) return {title:v.title||"", author:(v.authors||[]).join(", "), pages:v.pageCount||"", year:(v.publishedDate||"").slice(0,4), lang:v.language?langName(v.language):"", coverUrl:httpsUrl(v.imageLinks&&(v.imageLinks.thumbnail||v.imageLinks.smallThumbnail))}; }catch(_){}
   try{ const d=await fetchJson("https://libris.kb.se/xsearch?query=isbn:"+isbn+"&format=json&n=1");
     const v=d.xsearch&&d.xsearch.list&&d.xsearch.list[0];
     if(v){ const cr=[].concat(v.creator||[])[0]||""; const m=String(cr).match(/^([^,]+),\s*([^,\d]+)/);
       return {title:String(v.title||"").split(" / ")[0], author:m?(m[2].trim()+" "+m[1].trim()):cr, pages:"", year:String([].concat(v.date||[])[0]||"").match(/\d{4}/)?.[0]||"", lang:v.language==="swe"?"Svenska":"", coverUrl:""}; } }catch(_){}
   return null;
+}
+function volToResult(v){ return {title:v.title||"", author:(v.authors||[]).join(", "), pages:v.pageCount||"", year:(v.publishedDate||"").slice(0,4), lang:v.language?langName(v.language):"", isbn:((v.industryIdentifiers||[]).find(x=>x.type==="ISBN_13")||(v.industryIdentifiers||[])[0]||{}).identifier||"", coverUrl:httpsUrl(v.imageLinks&&(v.imageLinks.thumbnail||v.imageLinks.smallThumbnail))}; }
+async function searchBooks(q){
+  const digits=q.replace(/[^0-9Xx]/g,"");
+  if((digits.length===10||digits.length===13) && /^[\d\sXx-]+$/.test(q.trim())){ const r=await lookupIsbn(digits); return r?[{...r,isbn:digits}]:[]; }
+  let out=[];
+  try{ const d=await fetchJson("https://openlibrary.org/search.json?limit=10&fields=title,author_name,first_publish_year,number_of_pages_median,cover_i,isbn,language&q="+encodeURIComponent(q));
+    out=(d.docs||[]).map(x=>({title:x.title, author:(x.author_name||[]).join(", "), year:x.first_publish_year||"", pages:x.number_of_pages_median||"", lang:(x.language||[]).length===1?langName(x.language[0]):"", isbn:"", coverUrl:x.cover_i?"https://covers.openlibrary.org/b/id/"+x.cover_i+"-M.jpg":""})); }catch(_){}
+  if(!out.length){ try{ const d=await fetchJson("https://www.googleapis.com/books/v1/volumes?maxResults=10&printType=books&q="+encodeURIComponent(q));
+    out=(d.items||[]).map(it=>volToResult(it.volumeInfo||{})).filter(r=>r.title); }catch(_){} }
+  // Drop duplicate editions: keep the first hit per title + author.
+  const seen=new Set(); return out.filter(r=>{ const k=norm(r.title)+"|"+norm(r.author); if(seen.has(k)) return false; seen.add(k); return true; }).slice(0,6);
+}
+async function runFind(){
+  const el=$("#e_find"); const q=(el?el.value:S.findQ||"").trim(); S.findQ=q; if(!q) return;
+  readForm(); S.found="loading"; renderModal();
+  S.found=await searchBooks(q); renderModal();
+}
+function pickFound(i){
+  const r=(S.found||[])[i]; if(!r) return; readForm(); const e=S.edit;
+  e.title=langName(r.lang)==="Engelska"?titleCase(r.title):r.title; e.author=r.author; if(r.isbn) e.isbn=r.isbn;
+  if(r.pages) e.pages=+r.pages||""; if(r.year) e.year=+r.year||""; if(r.lang) e.lang=r.lang; if(r.coverUrl) e.coverUrl=r.coverUrl;
+  S.found=null; renderModal(); toast("Ifyllt. Kolla uppgifterna och tryck Spara.");
 }
 async function isbnLookup(){
   readForm(); const isbn=String(S.edit.isbn||"").replace(/[^0-9Xx]/g,"");
@@ -777,7 +800,7 @@ async function startScan(){
     box.innerHTML=`<div class="card" style="padding:8px"><video id="scanVideo" playsinline muted style="width:100%;border-radius:8px"></video><div class="row" style="margin-top:6px"><span class="muted small grow">Håll streckkoden på baksidan framför kameran.</span><button type="button" class="btn small" data-act="scanstop">Avbryt</button></div></div>`;
     const v=$("#scanVideo"); v.srcObject=scanStream; await v.play();
     const det=new BarcodeDetector({formats:["ean_13","ean_8","upc_a"]});
-    scanTimer=setInterval(async()=>{ try{ const codes=await det.detect(v); const c=codes.find(x=>/^97[89]\d{10}$/.test(x.rawValue)); if(c){ stopScan(); S.edit.isbn=c.rawValue; renderModal(); isbnLookup(); } }catch(_){} },350);
+    scanTimer=setInterval(async()=>{ try{ const codes=await det.detect(v); const c=codes.find(x=>/^97[89]\d{10}$/.test(x.rawValue)); if(c){ stopScan(); S.findQ=c.rawValue; S.edit.isbn=c.rawValue; renderModal(); runFind(); } }catch(_){} },350);
   }catch(_){ toast("Kameran gick inte att starta. Skriv ISBN i stället."); stopScan(); }
 }
 function stopScan(){ clearInterval(scanTimer); scanTimer=null; if(scanStream){ scanStream.getTracks().forEach(t=>t.stop()); scanStream=null; } const box=$("#scanBox"); if(box) box.innerHTML=""; }
@@ -791,10 +814,15 @@ async function findCovers(){
     let url="";
     try{
       const sa=splitAuthor(b.author); const sur=sa?sa.last:String(b.author||"").split(" ").pop();
-      const d=await fetchJson("https://www.googleapis.com/books/v1/volumes?maxResults=5&q="+encodeURIComponent('intitle:"'+b.title.split(":")[0]+'" inauthor:'+sur));
       const ct=norm(b.title.split(":")[0]);
-      const hit=(d.items||[]).find(it=>{ const v=it.volumeInfo||{}; return norm(v.title||"").startsWith(ct) && (v.authors||[]).some(a=>norm(a).includes(norm(sur))) && v.imageLinks; });
-      if(hit) url=httpsUrl(hit.volumeInfo.imageLinks.thumbnail||hit.volumeInfo.imageLinks.smallThumbnail);
+      const od=await fetchJson("https://openlibrary.org/search.json?limit=5&fields=title,author_name,cover_i&title="+encodeURIComponent(b.title.split(":")[0])+"&author="+encodeURIComponent(sur));
+      const oh=(od.docs||[]).find(x=>x.cover_i && norm(x.title||"").startsWith(ct) && (x.author_name||[]).some(a=>norm(a).includes(norm(sur))));
+      if(oh) url="https://covers.openlibrary.org/b/id/"+oh.cover_i+"-M.jpg";
+      if(!url){ try{
+        const d=await fetchJson("https://www.googleapis.com/books/v1/volumes?maxResults=5&q="+encodeURIComponent('intitle:"'+b.title.split(":")[0]+'" inauthor:'+sur));
+        const hit=(d.items||[]).find(it=>{ const v=it.volumeInfo||{}; return norm(v.title||"").startsWith(ct) && (v.authors||[]).some(a=>norm(a).includes(norm(sur))) && v.imageLinks; });
+        if(hit) url=httpsUrl(hit.volumeInfo.imageLinks.thumbnail||hit.volumeInfo.imageLinks.smallThumbnail);
+      }catch(_){} }
     }catch(_){ break; }
     patches[b.id]= url ? {coverUrl:url, coverTried:true} : {coverTried:true};
     await new Promise(r=>setTimeout(r,700));
@@ -1065,8 +1093,8 @@ function authorView(){
 function openBook(id){
   const b = id ? {...S.books.find(x=>x.id===id)} : {kind:"bok",title:"",author:"",added:todayISO(),rating:0,extra:{}};
   if(!b) return;
-  if(!b.series){ const si=seriesInfo(b); if(si&&si.series){ b.series=si.series; if(!b.num) b.num=si.num; } }
-  S.edit=b; renderModal();
+  if(id && !b.series){ const si=seriesInfo(b); if(si&&si.series){ b.series=si.series; if(!b.num) b.num=si.num; } }
+  S.edit=b; S.found=null; renderModal();
 }
 function renderModal(){
   const b=S.edit; const m=$("#modal");
@@ -1080,25 +1108,28 @@ function renderModal(){
   const extras=Object.entries(b.extra||{}).filter(([k])=>!HIDE_EXTRA.test(k.trim()));
   m.innerHTML=`<div class="overlay" data-act="close-bg"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlgT">
     <div class="row" style="align-items:flex-start">${b.id?coverHtml(b,true):""}<div class="grow"><h2 id="dlgT" style="font-size:20px">${b.id?esc(b.title):"Ny bok"}</h2>${b.author?`<div class="muted">${authorLink(b.author)}</div>`:""}${b.filled&&Object.values(b.filled).some(Boolean)?`<div class="muted small" style="margin-top:6px">${Object.keys(b.filled).filter(k=>b.filled[k]).map(k=>(({pages:"Sidantal",year:"Utgivningsår",series:"Serie"})[k]||k)+" ifyllt från "+b.filled[k]).join(". ")}.</div>`:""}</div><button class="btn" data-act="close">Stäng</button></div>
-    <div class="row">
+    ${b.id?`<div class="row">
       ${b.read?`<button class="btn" data-act="reread">Jag vill läsa den igen</button>`:""}
       ${!b.read?`<button class="btn" data-act="start">Börja läsa idag</button>`:""}
       ${!b.read?`<button class="btn" data-act="finish">Markera som läst idag</button>`:""}
       ${b.title?`<a class="btn" href="${esc(adlibrisUrl(b))}" target="_blank" rel="noopener" style="text-decoration:none">Sök på Adlibris ↗</a>`:""}
       ${S.ol[b.id]&&S.ol[b.id].key?`<a class="btn" href="https://openlibrary.org${esc(S.ol[b.id].key)}" target="_blank" rel="noopener" style="text-decoration:none">Open Library ↗</a>`:""}
-    </div>
+    </div>`:""}
     ${b.id&&seriesOf(b)?`<div class="small">Serie: ${seriesLink(seriesOf(b).name, seriesOf(b).name+(seriesOf(b).num?" "+numLabel(seriesOf(b).num):""))}</div>`:""}
     ${(b.reads&&b.reads.length)||b.reread?`<div class="small muted">${b.reread&&!b.read?"<b>Läses om.</b> ":""}${(b.reads||[]).length?"Tidigare läst: "+(b.reads||[]).map(r=>esc(fmtDate(r.read))).join(", "):""}</div>`:""}
-    ${genreBlock(b)}
-    ${ratingBlock(b)}
-    <div class="row" style="align-items:flex-end">
-      <label class="grow" style="display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)">ISBN<input type="text" id="e_isbn" value="${esc(b.isbn||"")}" inputmode="numeric" placeholder="978…" style="color:var(--ink)"></label>
-      <button type="button" class="btn" data-act="isbn">Hämta uppgifter</button>
-      ${"BarcodeDetector" in window?`<button type="button" class="btn" data-act="scan">Skanna streckkod</button>`:""}
-    </div>
-    <div id="scanBox"></div>
+    ${b.id?genreBlock(b):""}
+    ${b.id?ratingBlock(b):""}
+    ${b.id?"":`<div class="card" style="padding:12px;display:flex;flex-direction:column;gap:8px">
+      <label for="e_find" class="small muted">Sök efter boken på titel, gärna med författare, eller skriv ett ISBN</label>
+      <div class="row"><input type="search" id="e_find" class="grow" placeholder="t.ex. Vicious Schwab eller 9781250…" value="${esc(S.findQ||"")}" style="min-width:0">
+        <button type="button" class="btn primary" data-act="find">Sök</button>
+        ${"BarcodeDetector" in window?`<button type="button" class="btn" data-act="scan">Skanna streckkod</button>`:""}</div>
+      <div id="scanBox"></div>
+      ${S.found==="loading"?`<p class="muted small" style="margin:0">Söker …</p>`:Array.isArray(S.found)?(S.found.length?`<div class="list">${S.found.map((r,i)=>`<div class="mini" data-pickfound="${i}" role="button" tabindex="0" style="padding:8px 10px">${r.coverUrl?`<img class="cover" src="${esc(r.coverUrl)}" alt="" referrerpolicy="no-referrer">`:`<span class="cover ph">${esc((r.title||"?").charAt(0))}</span>`}<div><div class="t">${esc(r.title)}</div><div class="s">${esc([r.author,r.year,r.pages?r.pages+" s.":"",r.lang].filter(Boolean).join(" · "))}</div></div></div>`).join("")}</div><p class="muted small" style="margin:0">Välj rätt bok, så fylls uppgifterna i. Hittar du den inte, fyll i själv.</p>`:`<p class="muted small" style="margin:0">Hittade inget. Prova med färre ord, eller fyll i själv.</p>`):""}
+    </div>`}
     <div class="form">
       ${inp("title","Titel","text",'class="wide"').replace("<label>","<label class=\"wide\">")}
+      ${inp("isbn","ISBN","text",'inputmode="numeric"')}
       ${inp("author","Författare")}
       <label>Kön<select id="e_gender">${["","K","M","B"].map(v=>`<option ${b.gender===v?"selected":""} value="${v}">${v?GENDER[v]:"–"}</option>`).join("")}</select></label>
       ${pick("lang","Språk",langName(b.lang),langs)}
@@ -1414,7 +1445,7 @@ function nextView(){
 /* --- plan --- */
 function yymm(d){ return String(d.getFullYear()).slice(2)+String(d.getMonth()+1).padStart(2,"0"); }
 function planLabel(k){ return MON_SV_LONG[+k.slice(2)-1]+" 20"+k.slice(0,2); }
-function findBook(title){ const t=norm(title); return S.books.find(b=>norm(b.title)===t); }
+function findBook(title){ const t=norm(title); return t?S.books.find(b=>norm(b.title)===t):null; }
 function planView(){ return S.planKey ? planMonthView() : planYearView(); }
 function planYearView(){
   const now=new Date(); const Y=S.planYear||now.getFullYear(); const nowK=yymm(now);
@@ -1487,11 +1518,12 @@ document.addEventListener("change", e=>{
   if(nmap[id]){ S.next[nmap[id][0]]=e.target[nmap[id][1]]; S.pickId=null; render(); }
 });
 document.addEventListener("keydown", e=>{
+  if(e.key==="Enter" && e.target.id==="e_find"){ e.preventDefault(); runFind(); return; }
   if(e.key==="Escape" && S.edit){ S.edit=null; S.confirmDel=false; renderModal(); }
-  if((e.key==="Enter"||e.key===" ") && e.target.matches("[role=button][data-book],[role=button][data-planadd],[role=button][data-planmonth],[role=button][data-seropen],[role=button][data-cleanopen]")){ e.preventDefault(); e.target.click(); }
+  if((e.key==="Enter"||e.key===" ") && e.target.matches("[role=button][data-book],[role=button][data-planadd],[role=button][data-planmonth],[role=button][data-seropen],[role=button][data-cleanopen],[role=button][data-pickfound]")){ e.preventDefault(); e.target.click(); }
 });
 document.addEventListener("click", async e=>{
-  const t=e.target.closest("[data-act],[data-phase],[data-book],[data-rate],[data-scope],[data-ser],[data-serread],[data-aw],[data-plan],[data-planrm],[data-planadd],[data-q],[data-genre],[data-awsrc],[data-ng],[data-planmonth],[data-py],[data-more],[data-author],[data-af],[data-seropen],[data-cleanopen],[data-fixauthor],[data-undotitle],[data-libsave],[data-libretire],[data-abandon],[data-apply],[data-skip],[data-gotoseries],[data-dupch]");
+  const t=e.target.closest("[data-act],[data-phase],[data-book],[data-rate],[data-scope],[data-ser],[data-serread],[data-aw],[data-plan],[data-planrm],[data-planadd],[data-q],[data-genre],[data-awsrc],[data-ng],[data-planmonth],[data-py],[data-more],[data-author],[data-af],[data-seropen],[data-cleanopen],[data-fixauthor],[data-undotitle],[data-libsave],[data-libretire],[data-abandon],[data-apply],[data-skip],[data-gotoseries],[data-dupch],[data-pickfound]");
   if(!t) return;
   const d=t.dataset;
   if(d.act==="close-bg" && e.target!==t) return;
@@ -1509,6 +1541,7 @@ document.addEventListener("click", async e=>{
   if(d.gotoseries){ S.serOpen=d.gotoseries.trim(); S.serFilter="all"; S.serQ=d.gotoseries.trim(); if(S.edit){ S.edit=null; S.confirmDel=false; renderModal(); } if(location.hash==="#serier") render(); else location.hash="#serier"; $("#main").scrollTop=0; return; }
   if(d.abandon){ const k=d.abandon.trim().toLowerCase(); const ab={...(S.abandoned||{})}; if(ab[k]) delete ab[k]; else ab[k]=true;
     try{ await queued("seriesState",()=>S.db.doc("lib/seriesState").set({abandoned:ab})); toast(ab[k]?"Serien är markerad som avbruten. Dess olästa böcker föreslås inte längre i Nästa bok.":"Serien är aktiv igen."); }catch(e){ dbFail(e); } return; }
+  if(d.pickfound!=null){ pickFound(+d.pickfound); return; }
   if(d.dupch){ S.dupChoice={...(S.dupChoice||{})}; S.dupChoice[d.dupch] = S.dupChoice[d.dupch]===d.v ? undefined : d.v; if(!S.dupChoice[d.dupch]) delete S.dupChoice[d.dupch]; render(); return; }
   if(d.skip){ (S.cleanSkip ||= new Set()); S.cleanSkip.has(d.skip)?S.cleanSkip.delete(d.skip):S.cleanSkip.add(d.skip); render(); return; }
   if(d.apply){ await applyProposals(d.apply); return; }
@@ -1538,6 +1571,7 @@ document.addEventListener("click", async e=>{
       case "backup": downloadBackup(); return;
       case "importtext": { const t=$("#importText"); if(t && t.value.trim()) importData(t.value.trim()); return; }
       case "isbn": isbnLookup(); return;
+      case "find": runFind(); return;
       case "scan": startScan(); return;
       case "scanstop": stopScan(); return;
       case "exportall": case "copyall": {
