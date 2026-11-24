@@ -371,6 +371,8 @@ async function maybeEnrich(){
     if(b.series){ const ps=parseSeriesField(b.series); if(ps.name!==b.series){ const patch={series:ps.name}; if(ps.num && !b.num) patch.num=ps.num; else if(b.num) patch.num=firstNum(b.num); put(b,patch); b.series=ps.name; if(patch.num) b.num=patch.num; } }
     if(b.num && String(b.num)!==firstNum(b.num)) put(b,{num:firstNum(b.num)});
     if(norm(b.source)==="colorado") put(b,{source:"Alamosa"});
+    // Corrections Kitty has given by hand.
+    if(/natt och dag/i.test(b.author||"") && /^179[345]$/.test(String(b.title).trim()) && !b.series) put(b,{series:"Bellman Noir Trilogy", num:String(+String(b.title).trim()-1792)});
     // Language codes -> names ("Chn" -> "Kinesiska"), whitespace, gender, odd dates.
     for(const k of ["lang","origLang"]){ const v=b[k]; if(v){ const n=langName(v); if(n!==v) put(b,{[k]:n}); } }
     for(const k of ["title","author","source","format","status"]){ const v=b[k]; if(typeof v==="string"){ const c=v.replace(/\s+/g," ").trim(); if(c!==v) put(b,{[k]:c}); } }
@@ -405,6 +407,12 @@ async function maybeEnrich(){
   for(const x of S.series){ if(!x.series) continue; const fx=fixSeriesName(x.series,x.lang); if(fx!==x.series) (byDoc[x._doc] ||= {})[x.id]={series:fx}; }
   for(const [doc,items] of Object.entries(byDoc)){
     try{ await queued(doc, ()=>S.db.doc("lib/"+doc).update({items})); }catch(_){}
+  }
+  // Library card dates given by hand (only filled in if empty).
+  const cardDates={alamosa:"2028-11-05"};
+  if(S.libs.some(l=>cardDates[norm(l.name)] && !l.validTo)){
+    const list=S.libs.map(l=>({...l, validTo:l.validTo||cardDates[norm(l.name)]||""}));
+    try{ await queued("libraries",()=>S.db.doc("lib/libraries").set({list})); }catch(_){}
   }
 }
 function stars(r){ r=Math.round(+r||0); return r ? "★".repeat(r)+"☆".repeat(5-r) : ""; }
