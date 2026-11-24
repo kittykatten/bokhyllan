@@ -1241,6 +1241,7 @@ function renderModal(){
       ${b.read?`<button class="btn" data-act="reread">Jag vill läsa den igen</button>`:""}
       ${!b.read?`<button class="btn" data-act="start">Börja läsa idag</button>`:""}
       ${!b.read?`<button class="btn" data-act="finish">Markera som läst idag</button>`:""}
+      ${!b.read&&b.status!=="Lånad"?`<button class="btn" data-act="loan">Lånad idag</button>`:""}
       ${b.title?`<a class="btn" href="${esc(adlibrisUrl(b))}" target="_blank" rel="noopener" style="text-decoration:none">Sök på Adlibris ↗</a>`:""}
       ${S.ol[b.id]&&S.ol[b.id].key?`<a class="btn" href="https://openlibrary.org${esc(S.ol[b.id].key)}" target="_blank" rel="noopener" style="text-decoration:none">Open Library ↗</a>`:""}
     </div>`:""}
@@ -1745,6 +1746,7 @@ document.addEventListener("click", async e=>{
       case "close": case "close-bg": stopScan(); S.edit=null; S.confirmDel=false; renderModal(); return;
       case "save": saveBook(); return;
       case "reread": { readForm(); const e=S.edit; e.reads=[...(e.reads||[]), {started:e.started||"", read:e.read}]; e.started=""; e.read=""; e.reread=true; saveBook(false).then(()=>{ renderModal(); toast("Boken ligger nu bland Att läsa som omläsning. Tidigare läsning finns kvar i statistiken."); }); return; }
+      case "loan": readForm(); S.edit.status="Lånad"; S.edit.loaned=todayISO(); saveBook(false).then(()=>{ renderModal(); toast(loanDays(S.edit)?"Lånad idag. Lämnas tillbaka "+fmtDate(addDaysISO(S.edit.loaned,loanDays(S.edit)))+".":"Lånad idag. Välj källa så räknas återlämningsdatumet ut."); }); return;
       case "start": readForm(); S.edit.started=todayISO(); if(S.edit.status==="Gav upp") S.edit.status=""; saveBook(); return;
       case "finish": readForm(); S.edit.read=todayISO(); S.edit.reread=false; if(!S.edit.started) S.edit.started=todayISO(); if(S.edit.status==="Gav upp") S.edit.status=""; saveBook(false).then(()=>{ renderModal(); toast("Markerad som läst. Sätt gärna ett betyg."); }); return;
       case "del": S.confirmDel=true; readForm(); renderModal(); return;
