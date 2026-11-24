@@ -204,7 +204,7 @@ const CHUNK = 150;
 const MON_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const MON_SV = ["jan","feb","mar","apr","maj","jun","jul","aug","sep","okt","nov","dec"];
 const MON_SV_LONG = ["januari","februari","mars","april","maj","juni","juli","augusti","september","oktober","november","december"];
-const STATUSES = ["","Ska lånas","Ska köpas","Köpt","Lånad","Lokal fil","Waitlist","On hold","Suspended","Backlog","Kanske","Gav upp"];
+const STATUSES = ["","Ska lånas","Ska köpas","Köpt","Lånad","Lokal fil","Waitlist","On hold","Kanske","Gav upp"];
 const DROP_REASONS=["Slutade läsa","Lockar inte längre","Har legat för länge","Går inte att få tag på"];
 const PHASE_LABEL = {tbr:"Att läsa", reading:"Läser", read:"Läst", dnf:"Bortvald"};
 const GENRES = ["Skönlitteratur","Historisk roman","Deckare & thriller","Fantasy","Science fiction","Skräck","Facklitteratur"];
@@ -419,6 +419,7 @@ async function maybeEnrich(){
       const hit=order.find(([re])=>re.test(t)); put(b,{series:"Harry Potter", num:hit?String(hit[1]):(b.num?firstNum(b.num):"")}); }
     // Corrections Kitty has given by hand.
     if(/^\s*audrain\.?\s*,?\s*a\.?\s*$/i.test(b.author||"")) put(b,{author:"Ashley Audrain", seriesTried:true, wdSeries:null});
+    if(b.status==="Suspended") put(b,{status:"On hold"}); else if(b.status==="Backlog") put(b,{status:""});
     if(!b.libby && b.extra && b.extra.Bi){ const v=String(b.extra.Bi).trim().toLowerCase(); const m=v==="yes"?"ja":(v==="no"||v==="not")?"nej":v==="notify"?"notify":""; if(m) put(b,{libby:m}); }
     if(!b.series){ const nt=norm(b.title); for(const r of SERIES_RULES){ if(!r.a.test(b.author||"")) continue;
       const k=Object.keys(r.t).find(k=>nt===k || nt.endsWith(" "+k) || nt.startsWith(k+" ")); if(k){ put(b,r.t[k]===""?{series:r.s}:{series:r.s, num:String(r.t[k])}); break; } } }
@@ -942,7 +943,7 @@ async function findCovers(){
 }
 
 /* --- shared helpers for home / clean / libraries --- */
-const HOLD_ST=["On hold","Suspended"];   // "Waitlist" = the title has a waitlist, not that you're in it
+const HOLD_ST=["On hold"];   // "Waitlist" = the title has a waitlist, not that you're in it
 const LOAN_ST=["Lånad"];
 function addDaysISO(iso,n){ const d=new Date(iso+"T12:00:00"); d.setDate(d.getDate()+n); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function loanDays(b){ const l=libOf(b); return l&&+l.days||0; }
@@ -1030,7 +1031,7 @@ function libraryView(){
   const old=S.libs.filter(l=>l.active===false).map(l=>{ const n=S.books.filter(b=>norm(b.source)===norm(l.name)); return `<div class="row small" style="padding:6px 0;border-bottom:1px solid var(--line)"><b class="grow">${esc(l.name)}</b><span class="muted">${n.length} böcker i historiken · ${n.filter(b=>phase(b)==="read").length} lästa</span></div>`; }).join("");
   return `<h2 style="font-size:22px">Bibliotek</h2>${rows||`<div class="empty">Inga bibliotek inlagda.</div>`}
   ${old?`<div class="card"><div class="sec-h"><h3>Tidigare bibliotek</h3></div>${old}<p class="muted small">Används inte längre. Böckerna ligger kvar i historik och statistik.</p></div>`:""}
-  <p class="muted small">Köer räknas på status On hold och Suspended. Waitlist betyder att boken har kö på biblioteket, inte att du står i den, och räknas inte. Lån räknas på status Lånad. Biblioteket är det som står i bokens Källa.</p>`;
+  <p class="muted small">Köer räknas på status On hold. Waitlist betyder att boken har kö på biblioteket, inte att du står i den, och räknas inte. Lån räknas på status Lånad. Biblioteket är det som står i bokens Källa.</p>`;
 }
 
 /* --- clean-up --- */
@@ -1295,13 +1296,14 @@ function renderModal(){
   </div></div>`;
 }
 // Format → status → source. Saved values outside the lists are kept and shown.
-const EPUB_ST=["","Ska lånas","Waitlist","On hold","Suspended","Lånad","Lokal fil","Kanske","Backlog"];
-const BOK_ST=["","Ska köpas","Köpt","Lånad","Kanske","Backlog"];
+const EPUB_ST=["","Ska lånas","Waitlist","On hold","Lånad","Lokal fil","Kanske"];
+const BOK_ST=["","Ska köpas","Köpt","Lånad","Kanske"];
 function isBok(b){ return String(b.format||"").trim().toLowerCase()==="bok"; }
 function statusOpts(b){ const l=isBok(b)?BOK_ST:EPUB_ST; return b.status&&!l.includes(b.status)?[...l,b.status]:l; }
 function sourceOpts(b){
-  const l=isBok(b)?["","Köpt","Lånad"]:["",...S.libs.filter(x=>x.active!==false).map(x=>x.name),"Lokal fil"];
-  return b.source&&!l.includes(b.source)?[...l,b.source]:l;
+  if(isBok(b)) return ["","Köpt","Lånad"];
+  const l=["",...S.libs.filter(x=>x.active!==false).map(x=>x.name),"Lokal fil"];
+  return b.source&&!l.includes(b.source)&&!["Köpt","Lånad"].includes(b.source)?[...l,b.source]:l;
 }
 function showLibby(b){ return !isBok(b) && !["Lokal fil","Köpt","Lånad"].includes(b.status) && b.source!=="Lokal fil"; }
 function showLoan(b){ return !isBok(b) && b.status==="Lånad" && b.source!=="Lokal fil"; }
