@@ -350,6 +350,18 @@ const BACKLOG_DAYS=730;
 function isBacklog(b){ const a=String(b.added||""); if(phase(b)!=="tbr" || isUnreleased(b) || !/^\d{4}-\d{2}-\d{2}$/.test(a)) return false; const d=daysUntil(a); return d!=null && -d>BACKLOG_DAYS; }
 function releaseText(b){ const r=relDate(b); if(!/^\d{4}-\d{2}-\d{2}$/.test(r)) return b.year?"Släpps "+b.year:"Ej utgiven";
   const d=daysUntil(r); return d>1?`Släpps om ${d} dagar (${fmtDate(r)})`:d===1?"Släpps imorgon!":d===0?"Släpps idag!":"Släpptes "+fmtDate(r); }
+// Time to read the whole list: unread pages (missing page counts get the average) / pages read per day over the last 12 full months.
+function listEstimate(){
+  const AM=authorMore(); const left=S.books.filter(b=>["tbr","reading"].includes(phase(b)) && !noMoreAuthor(b,AM));
+  if(!left.length) return null;
+  const known=left.filter(b=>+b.pages>0); const avg=known.length?known.reduce((s,b)=>s+ +b.pages,0)/known.length:350;
+  const pages=Math.round(left.reduce((s,b)=>s+(+b.pages>0?+b.pages:avg),0));
+  const {pages:pm}=monthCounts(); const d=new Date(); let p12=0;
+  for(let i=1;i<=12;i++){ const x=new Date(d.getFullYear(), d.getMonth()-i, 1); p12+=((pm[x.getFullYear()]||[])[x.getMonth()]||0); }
+  if(!p12) return null;
+  const months=Math.round(pages/(p12/12)); const y=Math.floor(months/12), m=months%12;
+  return {n:left.length, pages, text:"≈ "+[y?y+" år":"", m?m+" mån":""].filter(Boolean).join(" "), how:`${fmtN(pages)} sidor kvar (${left.length-known.length} böcker utan sidantal räknas som ${Math.round(avg)} sidor) delat med ${fmtN(Math.round(p12/12))} sidor per månad, som är ditt snitt de senaste 12 hela månaderna.`};
+}
 function noMoreAuthor(b,AM){ return (AM||authorMore())[authorKey(b.author)]<=2; }
 function authorMore(){
   const m={};
@@ -1075,6 +1087,7 @@ function homeView(){
     <div class="tile"><div class="v">${yb}</div><div class="l">böcker lästa ${Y}${yn?` · ${yb-yn} romaner, ${yn} ${yn===1?"novell":"noveller"}`:""}</div>${delta(yb,lb)}</div>
     <div class="tile"><div class="v">${fmtN(yp)}</div><div class="l">sidor ${Y}</div>${delta(yp,lp)}</div>
     <div class="tile"><div class="v">${planRead} / ${plan.length}</div><div class="l">av ${MON_SV_LONG[M]}s plan lästa</div></div>
+    ${(()=>{ const e=listEstimate(); return e?`<div class="tile" title="${esc(e.how)}"><div class="v">${esc(e.text)}</div><div class="l">att läsa hela listan i din takt · ${e.n} böcker, ${fmtN(e.pages)} sidor</div></div>`:""; })()}
   </div>
   ${(()=>{ const ISO=/^\d{4}-\d{2}-\d{2}$/; const soon=S.books.filter(b=>phase(b)==="tbr").map(b=>{ const hasR=ISO.test(b.release||""); const r=hasR?b.release:""; return r?{b,r,d:daysUntil(r),min:-7}:null; }).filter(x=>x && x.d<=7 && x.d>=x.min).sort((x,y)=>x.d-y.d);
     return soon.map(({b,d,r})=>`<div class="notice row" data-book="${esc(b.id)}" role="button" tabindex="0" style="cursor:pointer">${d<=0?"🎉":"⏳"} <span class="grow"><b>${esc(b.title)}</b> av ${esc(b.author)}: ${d>0?(d===1?"släpps imorgon":"släpps om "+d+" dagar"):d===0?"släpps idag!":"har släppts ("+esc(fmtDate(r))+")"}</span></div>`).join(""); })()}
