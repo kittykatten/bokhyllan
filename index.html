@@ -1170,7 +1170,7 @@ function renderModal(){
     ${b.id&&seriesOf(b)?`<div class="small">Serie: ${seriesLink(seriesOf(b).name, seriesOf(b).name+(seriesOf(b).num?" "+numLabel(seriesOf(b).num):""))}</div>`:""}
     ${(b.reads&&b.reads.length)||b.reread?`<div class="small muted">${b.reread&&!b.read?"<b>Läses om.</b> ":""}${(b.reads||[]).length?"Tidigare läst: "+(b.reads||[]).map(r=>esc(fmtDate(r.read))).join(", "):""}</div>`:""}
     ${b.id?genreBlock(b):""}
-    ${b.id?ratingBlock(b):""}
+    ${b.id&&showRating(b)?ratingBlock(b):""}
     ${b.id?"":`<div class="card" style="padding:12px;display:flex;flex-direction:column;gap:8px">
       <label for="e_find" class="small muted">Sök efter boken på titel, gärna med författare, eller skriv ett ISBN</label>
       <div class="row"><input type="search" id="e_find" class="grow" placeholder="t.ex. Vicious Schwab eller 9781250…" value="${esc(S.findQ||"")}" style="min-width:0">
@@ -1213,6 +1213,9 @@ function genreBlock(b){
   return sg ? `<div class="row small"><span class="muted">Genre:</span>${sg.list.map(g=>`<span class="genre">${esc(g)}</span>`).join("")}<span class="muted">enligt ${esc(sg.src)}</span></div>`
             : `<div class="small muted">Genre: ingen uppgift hittades.</div>`;
 }
+// Rating is only asked for books read from 2026 on (or ones already rated / being read now).
+const RATING_FROM="2026-01-01";
+function showRating(b){ return !!b.rating || !b.read || String(b.read)>=RATING_FROM; }
 function ratingBlock(b){
   const ans=b.ratingForm||{}; const hasForm=Object.values(ans).some(v=>+v);
   return `<details class="card" style="padding:12px" ${b.read||hasForm||b.moreAuthor?"open":""}>
@@ -1332,7 +1335,7 @@ function statsView(){
     <div class="card"><div class="sec-h"><h3>Utgivningsdecennium</h3></div>${hbars(decEntries,base.length)}</div>
     <div class="card"><div class="sec-h"><h3>Genre</h3></div>${hbars(tally(base.flatMap(b=>genresOf(b).map(g=>({g}))),x=>x.g,10),base.length)}<p class="muted small">Från Goodreads Choice eller Open Library. En bok kan ha två genrer, och böcker utan uppgift räknas inte.</p></div>
     <div class="card"><div class="sec-h"><h3>Källa</h3></div>${hbars(tally(base,b=>b.source),base.length)}</div>
-    <div class="card"><div class="sec-h"><h3>Betyg</h3></div>${hbars([5,4,3,2,1].map(r=>[stars(r),base.filter(b=>b.rating&&Math.round(+b.rating)===r).length]),base.length)}<p class="muted small">${base.filter(b=>!b.rating).length} utan betyg</p></div>
+    <div class="card"><div class="sec-h"><h3>Betyg</h3></div>${hbars([5,4,3,2,1].map(r=>[stars(r),base.filter(b=>b.rating&&Math.round(+b.rating)===r).length]),base.length)}<p class="muted small">${base.filter(b=>!b.rating && String(b.read)>=RATING_FROM).length} lästa sedan 2026 utan betyg</p></div>
   </div>`:`<div class="empty">Inga lästa böcker med datum ${scope==="year"?sel:""} i appen.</div>`}
   <p class="muted small">Böcker och sidor per månad kommer från fliken Statistik i arket fram till importen, och från läsdatumen i appen efter det. Fördelningarna bygger på böckerna i appen som har ett läsdatum.</p>`;
 }
