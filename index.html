@@ -967,7 +967,7 @@ function homeView(){
   const delta=(a,b)=>{ if(!b) return ""; const d=a-b; return `<div class="delta">${d>0?"▲ +":d<0?"▼ −":"± "}${fmtN(Math.abs(d))} mot samma tid ${Y-1} (${fmtN(b)})</div>`; };
   const k=yymm(now); const plan=S.plans[k]||[]; const planRead=plan.filter(i=>{const b=findBook(i.title);return b&&phase(b)==="read";}).length;
   const nIssues=cleanProposals().length;
-  const dueTxt=b=>{ const d=daysUntil(b.due); if(d==null) return `<span class="muted">Saknar återlämningsdatum</span>`; const t=d<0?`Försenad ${-d} d`:d===0?"Ska lämnas idag":d===1?"Ska lämnas imorgon":`Ska lämnas om ${d} dagar`; return `<span class="${d<=3?"due-soon":""}">${t}</span> · ${esc(b.source||"")}`; };
+  const dueTxt=b=>{ const d=daysUntil(b.due); if(d==null) return isEpubOrUnknown(b)?`<span class="muted">Saknar återlämningsdatum</span>`:`<span class="muted">Fysisk bok${b.source?" · "+esc(b.source):""}</span>`; const t=d<0?`Försenad ${-d} d`:d===0?"Ska lämnas idag":d===1?"Ska lämnas imorgon":`Ska lämnas om ${d} dagar`; return `<span class="${d<=3?"due-soon":""}">${t}</span> · ${esc(b.source||"")}`; };
   const holdsByLib={}; holds.forEach(b=>{ (holdsByLib[b.source||"Okänt bibliotek"] ||= []).push(b); });
   return `
   <div class="tiles">
@@ -1063,7 +1063,7 @@ function cleanIssues(){
   const dups=Object.entries(dup).filter(([k,l])=>l.length>1 && !(S.ignoreDups||{})[k]).map(([k,l])=>Object.assign(l,{key:k}));
   groups.push({key:"dups", title:"Möjliga dubbletter", count:dups.length, dups});
   // 4. Loans without return date
-  const nodue=S.books.filter(b=>LOAN_ST.includes(b.status) && !b.due && phase(b)!=="read" && phase(b)!=="dnf");
+  const nodue=S.books.filter(b=>LOAN_ST.includes(b.status) && isEpubOrUnknown(b) && !b.due && phase(b)!=="read" && phase(b)!=="dnf");
   groups.push({key:"nodue", title:"Lånade böcker utan återlämningsdatum", count:nodue.length, books:nodue});
   // 5. Missing basics
   const nopages=S.books.filter(b=>!b.pages && !(+b.year>new Date().getFullYear()));
@@ -1241,7 +1241,7 @@ function renderModal(){
       ${b.read?`<button class="btn" data-act="reread">Jag vill läsa den igen</button>`:""}
       ${!b.read?`<button class="btn" data-act="start">Börja läsa idag</button>`:""}
       ${!b.read?`<button class="btn" data-act="finish">Markera som läst idag</button>`:""}
-      ${!b.read&&b.status!=="Lånad"?`<button class="btn" data-act="loan">Lånad idag</button>`:""}
+      ${!b.read&&b.status!=="Lånad"&&isEpubOrUnknown(b)?`<button class="btn" data-act="loan">Lånad idag</button>`:""}
     </div>`:""}
     ${b.id&&seriesOf(b)?`<div class="small">Serie: ${seriesLink(seriesOf(b).name, seriesOf(b).name+(seriesOf(b).num?" "+numLabel(seriesOf(b).num):""))}</div>`:""}
     ${(b.reads&&b.reads.length)||b.reread?`<div class="small muted">${b.reread&&!b.read?"<b>Läses om.</b> ":""}${(b.reads||[]).length?"Tidigare läst: "+(b.reads||[]).map(r=>esc(fmtDate(r.read))).join(", "):""}</div>`:""}
@@ -1275,8 +1275,8 @@ function renderModal(){
       ${pick("source","Källa",b.source,sources)}
       <label>Format<select id="e_format">${[...new Set(["","EPUB","Bok",b.format||""])].map(v=>`<option value="${esc(v)}" ${String(b.format||"")===v?"selected":""}>${v==="Bok"?"Fysisk bok":v||"–"}</option>`).join("")}</select></label>
       ${isEpubOrUnknown(b)?`<label style="grid-column:1">Libby<select id="e_libby"><option value="">Vet inte</option><option value="ja" ${b.libby==="ja"?"selected":""}>Ja, finns</option><option value="nej" ${b.libby==="nej"?"selected":""}>Nej</option><option value="notify" ${b.libby==="notify"?"selected":""}>🔔 Notify</option></select></label>`:""}
-      ${(isEpubOrUnknown(b)?inp:inpFirst)("loaned","Lånedatum","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"')}
-      ${loanDays(b)?(b.loaned&&/^\d{4}-\d{2}-\d{2}$/.test(b.loaned)?`<p class="small muted" style="grid-column:1/-1;margin:0">Lämnas tillbaka ${esc(fmtDate(addDaysISO(b.loaned,loanDays(b))))} (${loanDays(b)} dagars lånetid på ${esc(b.source)}).</p>`:(b.due?`<p class="small muted" style="grid-column:1/-1;margin:0">Lämnas tillbaka ${esc(fmtDate(b.due))}.</p>`:"")):inp("due","Lämnas tillbaka","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}" title="Källan har ingen lånetid inlagd under Bibliotek, så skriv datumet själv"')}
+      ${isEpubOrUnknown(b)?inp("loaned","Lånedatum","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"'):""}
+      ${!isEpubOrUnknown(b)?"":loanDays(b)?(b.loaned&&/^\d{4}-\d{2}-\d{2}$/.test(b.loaned)?`<p class="small muted" style="grid-column:1/-1;margin:0">Lämnas tillbaka ${esc(fmtDate(addDaysISO(b.loaned,loanDays(b))))} (${loanDays(b)} dagars lånetid på ${esc(b.source)}).</p>`:(b.due?`<p class="small muted" style="grid-column:1/-1;margin:0">Lämnas tillbaka ${esc(fmtDate(b.due))}.</p>`:"")):inp("due","Lämnas tillbaka","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}" title="Källan har ingen lånetid inlagd under Bibliotek, så skriv datumet själv"')}
       ${inpFirst("started","Började läsa","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"')}
       ${inp("read","Läst klart","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"')}
       <label class="wide">Kommentar<textarea id="e_comment" rows="3">${esc(b.comment||"")}</textarea></label>
