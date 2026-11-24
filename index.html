@@ -1219,7 +1219,7 @@ function openBook(id){
   const b = id ? {...S.books.find(x=>x.id===id)} : {kind:"bok",title:"",author:"",added:todayISO(),rating:0,extra:{}};
   if(!b) return;
   if(id && !b.series){ const si=seriesInfo(b); if(si&&si.series){ b.series=si.series; if(!b.num) b.num=si.num; } }
-  S.edit=b; S.found=null; renderModal();
+  S.edit=b; S.found=null; S.editMeta=false; renderModal();
 }
 function renderModal(){
   const b=S.edit; const m=$("#modal");
@@ -1232,7 +1232,7 @@ function renderModal(){
     return `<label>${l}<select id="e_${k}" data-pick="${k}"><option value="">–</option>${all.map(o=>`<option ${o===cur?"selected":""} value="${esc(o)}">${esc(o)}</option>`).join("")}<option value="__new">+ Lägg till ny …</option></select></label>`; };
   const extras=Object.entries(b.extra||{}).filter(([k])=>!HIDE_EXTRA.test(k.trim()));
   m.innerHTML=`<div class="overlay" data-act="close-bg"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlgT">
-    <div class="row" style="align-items:flex-start">${b.id?coverHtml(b,true):""}<div class="grow"><h2 id="dlgT" style="font-size:20px">${b.id?esc(b.title):"Ny bok"}</h2>${b.author?`<div class="muted">${authorLink(b.author)}</div>`:""}${b.filled&&Object.values(b.filled).some(Boolean)?`<div class="muted small" style="margin-top:6px">${Object.keys(b.filled).filter(k=>b.filled[k]).map(k=>(({pages:"Sidantal",year:"Utgivningsår",series:"Serie"})[k]||k)+" ifyllt från "+b.filled[k]).join(". ")}.</div>`:""}</div><button class="btn" data-act="close">Stäng</button></div>
+    <div class="row" style="align-items:flex-start">${b.id?coverHtml(b,true):""}<div class="grow"><h2 id="dlgT" style="font-size:20px">${b.id?esc(b.title):"Ny bok"}</h2>${b.author?`<div class="muted">${authorLink(b.author)}</div>`:""}${b.filled&&Object.values(b.filled).some(Boolean)?`<div class="muted small" style="margin-top:6px">${Object.keys(b.filled).filter(k=>b.filled[k]).map(k=>(({pages:"Sidantal",year:"Utgivningsår",series:"Serie"})[k]||k)+" ifyllt från "+b.filled[k]).join(". ")}.</div>`:""}${b.id&&!S.editMeta?`<div class="muted small" style="margin-top:6px">${esc(bookFacts(b))}</div>`:""}</div><div class="row" style="gap:6px;flex-wrap:nowrap">${b.id?`<button class="btn" data-act="editmeta" aria-expanded="${!!S.editMeta}" title="Visa eller dölj titel, författare, språk, sidor och andra fasta uppgifter">${S.editMeta?"Dölj uppgifter":"✎ Redigera"}</button>`:""}<button class="btn" data-act="close">Stäng</button></div></div>
     ${b.id?`<div class="row">
       ${b.read?`<button class="btn" data-act="reread">Jag vill läsa den igen</button>`:""}
       ${!b.read?`<button class="btn" data-act="start">Börja läsa idag</button>`:""}
@@ -1253,6 +1253,7 @@ function renderModal(){
       ${S.found==="loading"?`<p class="muted small" style="margin:0">Söker …</p>`:Array.isArray(S.found)?(S.found.length?`<div class="list">${S.found.map((r,i)=>`<div class="mini" data-pickfound="${i}" role="button" tabindex="0" style="padding:8px 10px">${r.coverUrl?`<img class="cover" src="${esc(r.coverUrl)}" alt="" referrerpolicy="no-referrer">`:`<span class="cover ph">${esc((r.title||"?").charAt(0))}</span>`}<div><div class="t">${esc(r.title)}</div><div class="s">${esc([r.author,r.year,r.pages?r.pages+" s.":"",r.lang].filter(Boolean).join(" · "))}</div></div></div>`).join("")}</div><p class="muted small" style="margin:0">Välj rätt bok, så fylls uppgifterna i. Hittar du den inte, fyll i själv.</p>`:`<p class="muted small" style="margin:0">Hittade inget. Prova med färre ord, eller fyll i själv.</p>`):""}
     </div>`}
     <div class="form">
+      ${!b.id||S.editMeta?`
       ${inp("title","Titel","text",'class="wide"').replace("<label>","<label class=\"wide\">")}
       ${inp("isbn","ISBN","text",'inputmode="numeric"')}
       ${inp("author","Författare")}
@@ -1263,9 +1264,10 @@ function renderModal(){
       ${inp("pages","Sidor","number")}
       ${pick("series","Serie",b.series,[...new Set([...S.series.map(x=>(x.series||"").trim()),...S.books.map(x=>x.series)].filter(Boolean))])}
       ${inp("num","Nummer i serien")}
+      <label>Typ<select id="e_type"><option value="bok" ${kindOf(b)!=="novella"?"selected":""}>Roman</option><option value="novella" ${kindOf(b)==="novella"?"selected":""}>Novell</option></select></label>
+      `:""}
       ${!b.series&&seriesOf(b)?`<p class="small muted" style="grid-column:1/-1;margin:0">Förslag från ${esc(seriesOf(b).src||"Series-fliken")}: <b>${esc(seriesOf(b).name)}</b> <button type="button" class="btn small" data-act="useseries" style="font-size:13px;padding:4px 8px">Använd</button></p>`:""}
       <label>Status<select id="e_status">${STATUSES.map(s=>`<option ${b.status===s?"selected":""} value="${esc(s)}">${s||"–"}</option>`).join("")}</select></label>
-      <label>Typ<select id="e_type"><option value="bok" ${kindOf(b)!=="novella"?"selected":""}>Roman</option><option value="novella" ${kindOf(b)==="novella"?"selected":""}>Novell</option></select></label>
       <label>Libby<select id="e_libby"><option value="">Vet inte</option><option value="ja" ${b.libby==="ja"?"selected":""}>Ja, finns</option><option value="nej" ${b.libby==="nej"?"selected":""}>Nej</option><option value="notify" ${b.libby==="notify"?"selected":""}>🔔 Notify</option></select></label>
       ${pick("source","Källa",b.source,sources)}
       ${pick("format","Format",b.format,formats)}
@@ -1281,6 +1283,10 @@ function renderModal(){
       ${b.id?(S.confirmDel?`<span class="small">Ta bort boken för gott?</span><button class="btn danger" data-act="del-yes">Ja, ta bort</button><button class="btn" data-act="del-no">Nej</button>`:`<button class="btn danger" data-act="del">Ta bort</button>`):""}
     </div>
   </div></div>`;
+}
+function bookFacts(b){
+  const lang=langName(b.lang), orig=langName(b.origLang);
+  return [b.year, b.pages?b.pages+" sidor":"", lang&&orig&&lang!==orig?lang+" (från "+orig.toLowerCase()+")":lang, GENDER[b.gender]||"", kindOf(b)==="novella"?"Novell":"Roman", b.isbn?"ISBN "+b.isbn:""].filter(Boolean).join(" · ");
 }
 function genreBlock(b){
   const sg=genreSuggest(b);
@@ -1706,6 +1712,7 @@ document.addEventListener("click", async e=>{
       case "more": S.f.limit+=300; render(); return;
       case "new": openBook(null); return;
       case "authback": location.hash=(S.authorBack&&S.authorBack!=="#forfattare")?S.authorBack:"#bocker"; return;
+      case "editmeta": { readForm(); S.editMeta=!S.editMeta; renderModal(); return; }
       case "useseries": { readForm(); const sr=seriesOf(S.edit); if(sr){ S.edit.series=sr.name; if(!S.edit.num && sr.num) S.edit.num=sr.num; } renderModal(); return; }
       case "usesugg": { readForm(); const sg=genreSuggest(S.edit); if(sg) S.edit.genres=sg.list.slice(); renderModal(); return; }
       case "clearrating": readForm(); S.edit.rating=0; S.edit.ratingForm={}; renderModal(); return;
