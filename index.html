@@ -1082,12 +1082,13 @@ function homeView(){
   <div class="hgrid">
     <div class="card"><div class="sec-h"><h3>Läser nu</h3><span class="muted small">${reading.length}</span></div>
       ${reading.length?reading.map(b=>miniRow(b,`${authorLink(b.author)} · började ${esc(fmtDate(b.started))}${LOAN_ST.includes(b.status)&&b.due?" · "+dueTxt(b):""}`)).join(""):`<p class="muted small">Inget just nu. <a href="#bocker">Hitta nästa bok</a></p>`}</div>
-    <div class="card"><div class="sec-h"><h3>Lån</h3><span class="muted small">${loans.length}</span></div>
-      ${loans.length?loans.map(b=>miniRow(b,dueTxt(b))).join(""):`<p class="muted small">Inga lånade böcker.</p>`}</div>
-    <div class="card"><div class="sec-h"><h3>I kö</h3><span class="muted small">${holds.length}</span></div>
-      ${holds.length?Object.entries(holdsByLib).map(([lib,list])=>`<div class="muted small" style="margin-top:6px">${esc(lib)} · ${list.length}${(()=>{const l=S.libs.find(x=>norm(x.name)===norm(lib));return l&&l.holds?" av "+l.holds+" köplatser":"";})()}</div>${list.map(b=>miniRow(b,esc(b.status==="On hold"?"I kö":b.status==="Suspended"?"Pausad kö":b.status))).join("")}`).join(""):`<p class="muted small">Inga köer.</p>`}</div>
     <div class="card"><div class="sec-h"><h3>Plan för ${MON_SV_LONG[M]}</h3><a href="#plan" class="small">Hela planen</a></div>
       ${plan.length?plan.map(it=>{ const b=findBook(it.title); const p=b?phase(b):"tbr"; return b?miniRow(b,`<span class="dot ph-${p}" style="display:inline-block"></span> ${PHASE_LABEL[p]}`):`<div class="mini"><span class="cover ph">${esc(it.title.charAt(0))}</span><div><div class="t">${esc(it.title)}</div><div class="s">Finns inte i listan</div></div></div>`; }).join(""):`<p class="muted small">Inget planerat. <a href="#plan">Planera månaden</a></p>`}</div>
+    <div class="card" style="border-style:dashed"><div class="sec-h"><h3>Läsmål ${Y+1}</h3></div>
+      <p class="muted small" style="margin:0">Inga mål satta än. Här visas hur det går mot dina läsmål från januari ${Y+1}.</p></div>
+    <div class="card"><div class="sec-h"><h3>${loans.length?"Lån och köer":"I kö"}</h3><span class="muted small">${holds.length+loans.length}</span></div>
+      ${loans.length?`<div class="small muted" style="margin:2px 0 4px">Lånade, inte påbörjade</div>${loans.map(b=>miniRow(b,dueTxt(b))).join("")}<div class="small muted" style="margin:10px 0 0">Köer</div>`:""}
+      ${holds.length?Object.entries(holdsByLib).map(([lib,list])=>`<div class="muted small" style="margin-top:6px">${esc(lib)} · ${list.length}${(()=>{const l=S.libs.find(x=>norm(x.name)===norm(lib));return l&&l.holds?" av "+l.holds+" köplatser":"";})()}</div>${list.map(b=>miniRow(b,esc(b.status==="On hold"?"I kö":b.status==="Suspended"?"Pausad kö":b.status))).join("")}`).join(""):`<p class="muted small">Inga köer.</p>`}</div>
   </div>`;
 }
 
