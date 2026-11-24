@@ -344,8 +344,11 @@ function numLabel(n){ n=firstNum(n); return n ? "#"+n : ""; }
 function oldNumLabel(n){ n=String(n||"").trim(); if(!n) return ""; const m=n.match(/^(\d+(?:-\d+)?)\/(\d+|\?)$/); return m ? "#"+m[1]+" av "+m[2] : "#"+n; }
 const MORE_LABELS=["","Aldrig mer","Knappast","Kanske","Troligen","Absolut"];
 function authorKey(a){ return norm(String(a||"").replace(/\s+/g," ")); }
-function isUnreleased(b){ const r=String(b.release||""); if(/^\d{4}-\d{2}-\d{2}$/.test(r)) return r>todayISO(); return +b.year>new Date().getFullYear(); }
-function releaseText(b){ const r=String(b.release||""); if(!/^\d{4}-\d{2}-\d{2}$/.test(r)) return b.year?"Släpps "+b.year:"Ej utgiven";
+function relDate(b){ const r=String(b.release||""); if(/^\d{4}-\d{2}-\d{2}$/.test(r)) return r; const a=String(b.added||""); return /^\d{4}-\d{2}-\d{2}$/.test(a)&&a>todayISO()?a:""; }
+function isUnreleased(b){ const r=relDate(b); if(r) return r>todayISO(); return +b.year>new Date().getFullYear(); }
+const BACKLOG_DAYS=730;
+function isBacklog(b){ const a=String(b.added||""); if(phase(b)!=="tbr" || isUnreleased(b) || !/^\d{4}-\d{2}-\d{2}$/.test(a)) return false; const d=daysUntil(a); return d!=null && -d>BACKLOG_DAYS; }
+function releaseText(b){ const r=relDate(b); if(!/^\d{4}-\d{2}-\d{2}$/.test(r)) return b.year?"Släpps "+b.year:"Ej utgiven";
   const d=daysUntil(r); return d>1?`Släpps om ${d} dagar (${fmtDate(r)})`:d===1?"Släpps imorgon!":d===0?"Släpps idag!":"Släpptes "+fmtDate(r); }
 function noMoreAuthor(b,AM){ return (AM||authorMore())[authorKey(b.author)]<=2; }
 function authorMore(){
@@ -800,7 +803,8 @@ function filteredBooks(){
   let list=S.books.filter(b=>{
     if(phase(b)==="dnf") return false;
     if(f.phase==="unreleased"){ if(!(phase(b)==="tbr" && isUnreleased(b) && !noMoreAuthor(b,AMall))) return false; }
-    else if(f.phase==="tbr"){ if(phase(b)!=="tbr" || isUnreleased(b) || (noMoreAuthor(b,AMall) && f.auth!=="less")) return false; }
+    else if(f.phase==="backlog"){ if(!isBacklog(b) || noMoreAuthor(b,AMall)) return false; }
+    else if(f.phase==="tbr"){ if(phase(b)!=="tbr" || isUnreleased(b) || noMoreAuthor(b,AMall)) return false; }
     else if(f.phase && phase(b)!==f.phase) return false;
     if(f.status && (b.status||"")!==f.status) return false;
     if(f.kind && kindOf(b)!==f.kind) return false;
@@ -814,12 +818,12 @@ function filteredBooks(){
   const by={added:b=>b.added||"",read:b=>b.read||b.started||"",title:b=>norm(b.title),author:b=>norm(b.author),pages:b=>+b.pages||0,year:b=>+b.year||0,rating:b=>+b.rating||0}[f.sort];
   const desc=["added","read","pages","year","rating"].includes(f.sort);
   list.sort((a,b)=>{ const x=by(a),y=by(b); return (x<y?-1:x>y?1:0)*(desc?-1:1); });
-  if(f.phase==="unreleased"){ const rk=b=>/^\d{4}-\d{2}-\d{2}$/.test(b.release||"")?b.release:(b.year?b.year+"-12-31":"9999"); list.sort((a,b)=>rk(a).localeCompare(rk(b))); }
+  if(f.phase==="unreleased"){ const rk=b=>relDate(b)||(b.year?b.year+"-12-31":"9999"); list.sort((a,b)=>rk(a).localeCompare(rk(b))); }
   return list;
 }
 function booksView(){
-  const f=S.f; const counts={tbr:0,reading:0,read:0,dnf:0,unrel:0}; const AMc=authorMore();
-  S.books.forEach(b=>{ const p=phase(b); if(p==="tbr"){ if(noMoreAuthor(b,AMc)) return; if(isUnreleased(b)){ counts.unrel++; return; } } counts[p]++; });
+  const f=S.f; const counts={tbr:0,reading:0,read:0,dnf:0,unrel:0,backlog:0}; const AMc=authorMore();
+  S.books.forEach(b=>{ const p=phase(b); if(p==="tbr"){ if(noMoreAuthor(b,AMc)) return; if(isUnreleased(b)){ counts.unrel++; return; } if(isBacklog(b)) counts.backlog++; } counts[p]++; });
   const list=filteredBooks(); const shown=list.slice(0,f.limit);
   const chip=(v,l,n)=>`<button class="chip" data-phase="${v}" aria-pressed="${f.phase===v}">${l}${n!=null?`<span class="n">${n}</span>`:""}</button>`;
   return `
@@ -827,12 +831,12 @@ function booksView(){
     <input type="search" id="q" placeholder="Sök titel, författare, serie …" value="${esc(f.q)}" aria-label="Sök">
     <button class="btn primary" data-act="new">+ Ny bok</button>
   </div>
-  <div class="chips">${chip("tbr","Att läsa",counts.tbr)}${chip("reading","Läser",counts.reading)}${chip("unreleased","Ej utgivna",counts.unrel)}${chip("read","Lästa",counts.read)}${chip("","Alla",S.books.length-counts.dnf)}</div>
+  <div class="chips">${chip("tbr","Att läsa",counts.tbr)}${chip("reading","Läser",counts.reading)}${chip("unreleased","Kommande",counts.unrel)}${chip("backlog","Backlog",counts.backlog)}${chip("read","Lästa",counts.read)}${chip("","Alla",S.books.length-counts.dnf)}</div>
   <div class="row small">
     <select id="fStatus" aria-label="Status"><option value="">Alla statusar</option>${STATUSES.filter(Boolean).map(s=>`<option ${f.status===s?"selected":""}>${esc(s)}</option>`).join("")}</select>
     <select id="fKind" aria-label="Typ"><option value="">Romaner och noveller</option><option value="bok" ${f.kind==="bok"?"selected":""}>Bara romaner</option><option value="novella" ${f.kind==="novella"?"selected":""}>Bara noveller</option></select>
     <select id="fSer" aria-label="Serie"><option value="">Med och utan serie</option><option value="in" ${f.ser==="in"?"selected":""}>Bara serieböcker</option><option value="none" ${f.ser==="none"?"selected":""}>Fristående</option></select>
-    <select id="fAuth" aria-label="Författare"><option value="">Alla författare</option><option value="more" ${f.auth==="more"?"selected":""}>Författare jag vill läsa mer av</option><option value="less" ${f.auth==="less"?"selected":""}>Författare jag inte vill läsa mer av</option></select>
+    <select id="fAuth" aria-label="Författare"><option value="">Alla författare</option><option value="more" ${f.auth==="more"?"selected":""}>Författare jag vill läsa mer av</option></select>
     <select id="fSort" aria-label="Sortering">${[["added","Senast tillagd"],["read","Senast läst"],["title","Titel A–Ö"],["author","Författare A–Ö"],["rating","Betyg"],["pages","Flest sidor"],["year","Nyast utgiven"]].map(([v,l])=>`<option value="${v}" ${f.sort===v?"selected":""}>${l}</option>`).join("")}</select>
   </div>
   <div id="results" style="display:flex;flex-direction:column;gap:16px">
@@ -1023,7 +1027,7 @@ function homeView(){
   const yb=sum(books[Y]), yp=sum(pages[Y]), lb=sum(books[Y-1],M+1), lp=sum(pages[Y-1],M+1), yn=sum(nov[Y]);
   const delta=(a,b)=>{ if(!b) return ""; const d=a-b; return `<div class="delta">${d>0?"▲ +":d<0?"▼ −":"± "}${fmtN(Math.abs(d))} mot samma tid ${Y-1} (${fmtN(b)})</div>`; };
   const k=yymm(now); const plan=S.plans[k]||[]; const planRead=plan.filter(i=>{const b=findBook(i.title);return b&&phase(b)==="read";}).length;
-  const nIssues=cleanProposals().length+newBookList().length;
+  const nIssues=cleanProposals().length+newBookList().length+backlogAsk().length;
   const dueTxt=b=>{ const d=daysUntil(b.due); if(d==null) return isEpubOrUnknown(b)?`<span class="muted">Saknar återlämningsdatum</span>`:`<span class="muted">Fysisk bok${b.source?" · "+esc(b.source):""}</span>`; const t=d<0?`Försenad ${-d} d`:d===0?"Ska lämnas idag":d===1?"Ska lämnas imorgon":`Ska lämnas om ${d} dagar`; return `<span class="${d<=3?"due-soon":""}">${t}</span> · ${esc(b.source||"")}`; };
   const holdsByLib={}; holds.forEach(b=>{ (holdsByLib[b.source||"Okänt bibliotek"] ||= []).push(b); });
   return `
@@ -1032,8 +1036,8 @@ function homeView(){
     <div class="tile"><div class="v">${fmtN(yp)}</div><div class="l">sidor ${Y}</div>${delta(yp,lp)}</div>
     <div class="tile"><div class="v">${planRead} / ${plan.length}</div><div class="l">av ${MON_SV_LONG[M]}s plan lästa</div></div>
   </div>
-  ${(()=>{ const soon=S.books.filter(b=>phase(b)==="tbr" && /^\d{4}-\d{2}-\d{2}$/.test(b.release||"")).map(b=>({b,d:daysUntil(b.release)})).filter(x=>x.d<=7 && x.d>=-7).sort((x,y)=>x.d-y.d);
-    return soon.map(({b,d})=>`<div class="notice row" data-book="${esc(b.id)}" role="button" tabindex="0" style="cursor:pointer">${d<=0?"🎉":"⏳"} <span class="grow"><b>${esc(b.title)}</b> av ${esc(b.author)}: ${d>0?(d===1?"släpps imorgon":"släpps om "+d+" dagar"):d===0?"släpps idag!":"har släppts ("+esc(fmtDate(b.release))+")"}</span></div>`).join(""); })()}
+  ${(()=>{ const ISO=/^\d{4}-\d{2}-\d{2}$/; const soon=S.books.filter(b=>phase(b)==="tbr").map(b=>{ const hasR=ISO.test(b.release||""); const r=hasR?b.release:(ISO.test(b.added||"")&&b.added>=todayISO()?b.added:""); return r?{b,r,d:daysUntil(r),min:hasR?-7:0}:null; }).filter(x=>x && x.d<=7 && x.d>=x.min).sort((x,y)=>x.d-y.d);
+    return soon.map(({b,d,r})=>`<div class="notice row" data-book="${esc(b.id)}" role="button" tabindex="0" style="cursor:pointer">${d<=0?"🎉":"⏳"} <span class="grow"><b>${esc(b.title)}</b> av ${esc(b.author)}: ${d>0?(d===1?"släpps imorgon":"släpps om "+d+" dagar"):d===0?"släpps idag!":"har släppts ("+esc(fmtDate(r))+")"}</span></div>`).join(""); })()}
   ${nIssues?`<a class="notice" href="#stada" style="text-decoration:none;color:inherit;display:block">Du har ${nIssues} ${nIssues===1?"sak":"saker"} i Inkorgen. <b>Gå till Inkorgen →</b></a>`:""}
   <div class="hgrid">
     <div class="card"><div class="sec-h"><h3>Läser nu</h3><span class="muted small">${reading.length}</span></div>
@@ -1049,7 +1053,7 @@ function homeView(){
 
 /* --- more --- */
 function moreView(){
-  const n=cleanProposals().length+newBookList().length;
+  const n=cleanProposals().length+newBookList().length+backlogAsk().length;
   const it=(h,t,d)=>`<a href="#${h}"><b>${t}</b><span>${d}</span></a>`;
   return `<h2 style="font-size:22px">Mer</h2><div class="menu">
     ${it("serier","Serier","Påbörjade, olästa och färdiga serier")}
@@ -1259,10 +1263,10 @@ function cleanView(){
     if(x.key==="titles") return sec(x.key,x.title,x.books.length, x.books.length?`<p class="muted small" style="margin-top:0">Engelska titlar skrevs om till engelsk stil. Ångra de som blev fel.</p>`+x.books.map(b=>`<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><div class="grow"><b>${esc(b.title)}</b><div class="muted small">var: ${esc(b.titleOrig)}</div></div><button class="btn small" data-undotitle="${esc(b.id)}">Ångra</button></div>`).join(""):`<p class="muted small">Inga.</p>`);
     return sec(x.key,x.title,x.count, `<p class="muted small" style="margin-top:0">Här finns inget säkert förslag. Öppna boken och fyll i själv, eller tryck ✕ så visas den inte här igen.</p>`+bookList(x.books, x.key==="noname"?(b=>"#"+esc(firstNum(b.num))):x.key==="oddlang"?(b=>esc([b.lang,b.origLang].filter(Boolean).join(" / "))):x.key==="epub"?(b=>"Format: "+esc(b.format)):null, x.key));
   }).join("");
-  return `<h2 style="font-size:22px">Inkorg</h2>${newBooksSection()}
+  return `<h2 style="font-size:22px">Inkorg</h2>${newBooksSection()}${backlogSection()}
   ${P.length?`<div class="notice row"><span class="grow">Jag har gjort <b>${P.length} förslag</b> utifrån det som redan finns i din lista. Gå igenom dem, ta bort bocken på dem som är fel och godkänn resten. Dubbletter måste du välja själv.</span><button class="btn primary" data-apply="all" ${active.length?"":"disabled"}>Genomför ${active.length}</button></div>`:(info?`<p class="muted">Inga förslag just nu.</p>`:"")}
   ${propSecs}
-  ${info?`<h3 style="font-size:17px;margin-top:8px">Att titta på själv</h3>${info}`:(P.length||newBookList().length?"":`<p class="muted">Inkorgen är tom. ✨</p>`)}`;
+  ${info?`<h3 style="font-size:17px;margin-top:8px">Att titta på själv</h3>${info}`:(P.length||newBookList().length||backlogAsk().length?"":`<p class="muted">Inkorgen är tom. ✨</p>`)}`;
 }
 /* --- author --- */
 function authorView(){
@@ -1403,6 +1407,24 @@ function newBookList(){
   return NEW_BOOKS.map(([author,title,year,lang])=>({author,title,year,lang:lang||"Engelska",key:"p:new:"+norm(author)+"|"+norm(title)}))
     .filter(n=>!IG[n.key] && !IG["p:new:"+norm(n.author)+"|"+norm(n.title.replace(/&/g,"and"))] && !have.has(nbKey(n.title)));
 }
+function backlogAsk(){
+  const t=todayISO(); const planned=new Set(Object.values(S.plans||{}).flat().map(i=>norm(i.title)));
+  return S.books.filter(b=>isBacklog(b) && !(b.keepUntil && b.keepUntil>t) && !planned.has(norm(b.title)) && !noMoreAuthor(b)).sort((a,b)=>String(a.added).localeCompare(String(b.added)));
+}
+function backlogSection(){
+  const l=backlogAsk(); if(!l.length) return "";
+  const yrs=b=>Math.floor(-daysUntil(b.added)/365);
+  return `<div class="card"><div class="sec-h"><h3>Har legat på listan i över 2 år</h3><span class="muted small">${l.length}</span></div>
+    <p class="muted small" style="margin-top:0">${l.length>10?"De 10 som legat längst visas. ":""}Vad vill du göra med dem?</p>
+    ${l.slice(0,10).map(b=>`<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div class="row"><button type="button" class="alink grow" style="text-align:left" data-book="${esc(b.id)}">${esc(b.title)} <span class="muted small">${esc(b.author)} · ${yrs(b)} år, tillagd ${esc(fmtDate(b.added))}</span></button></div>
+      <div class="chips" style="margin-top:6px"><button class="chip" data-bl="soon" data-id="${esc(b.id)}">Läs snart</button><button class="chip" data-bl="keep" data-id="${esc(b.id)}">Behåll ett år till</button><button class="chip" data-bl="later" data-id="${esc(b.id)}">Fråga om 6 månader</button><button class="chip" data-bl="drop" data-id="${esc(b.id)}">Flytta från listan</button></div></div>`).join("")}</div>`;
+}
+async function backlogAct(kind,id){
+  const b=S.books.find(x=>x.id===id); if(!b) return;
+  if(kind==="soon"){ const d=new Date(); const k=yymm(new Date(d.getFullYear(), d.getMonth()+1, 1)); try{ await movePlan(b.title,k); toast(b.title+" ligger nu i planen för "+planLabel(k)+"."); }catch(_){} return; }
+  const patch = kind==="keep"?{keepUntil:addDaysISO(todayISO(),365)} : kind==="later"?{keepUntil:addDaysISO(todayISO(),182)} : {dropped:{date:todayISO(), reason:"Har legat för länge"}};
+  if(await batchUpdate({[id]:patch})){ if(kind==="drop"){ try{ await movePlan(b.title,""); }catch(_){} } toast(kind==="drop"?"Flyttad till Bortvalda.":kind==="keep"?"Frågar igen om ett år.":"Frågar igen om sex månader."); }
+}
 function newBooksSection(){
   const l=newBookList(); if(!l.length) return "";
   const byA={}; l.forEach(n=>(byA[n.author] ||= []).push(n));
@@ -1500,7 +1522,7 @@ async function saveBook(close=true){
   const planTo=b.plan; const planFrom=b.id?planOf(S.books.find(x=>x.id===b.id)||b):"";
   for(const k of ["gender","lang","origLang","series","num","status","source","format","added","started","read","due","comment","year","pages","libby","loaned","release"]) if(item[k]==null) item[k]="";
   item.rating=+item.rating||0; item.extra=item.extra||{}; item.genres=item.genres||[]; item.ratingForm=item.ratingForm||{}; item.moreAuthor=+item.moreAuthor||0; item.num=firstNum(item.num);
-  if(/^\d{4}-\d{2}-\d{2}$/.test(String(item.release||"")) && !item.year) item.year=+item.release.slice(0,4);
+  if(/^\d{4}-\d{2}-\d{2}$/.test(String(item.release||""))){ if(!item.year) item.year=+item.release.slice(0,4); if(!item.read && !item.started) item.added=item.release; }
   for(const k of ["added","started","read","due","loaned","release"]){ if(item[k]){ const v=parseDate(String(item[k]).replace(/^(\d{4})-(\d{1,2})-(\d{1,2})$/,(m,y,mo,d)=>y+"-"+mo.padStart(2,"0")+"-"+d.padStart(2,"0"))); if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){ toast("Skriv datum som ÅÅÅÅ-MM-DD, till exempel 2026-11-23."); return; } item[k]=v; } }
   { const ld=loanDays(item); if(item.loaned && ld) item.due=addDaysISO(item.loaned, ld); }
   const orig=S.books.find(x=>x.id===b.id);
@@ -1845,6 +1867,7 @@ document.addEventListener("change", e=>{
   if(id==="fAuth"){ S.f.auth=e.target.value; render(); }
   if(id==="importFile" && e.target.files && e.target.files[0]){ e.target.files[0].text().then(importData); return; }
   if(id==="statYear"){ S.statYear=+e.target.value; render(); }
+  if(id==="e_release" && S.edit && /^\d{4}-\d{2}-\d{2}$/.test(e.target.value.trim())){ const a=$("#e_added"); if(a && !S.edit.read && !S.edit.started) a.value=e.target.value.trim(); }
   if((id==="e_format"||id==="e_source"||id==="e_loaned"||id==="e_status") && S.edit && e.target.value!=="__new"){ readForm(); const b=S.edit;
     if(id==="e_status"){ if(isBok(b) && (b.status==="Köpt"||b.status==="Lånad")) b.source=b.status; if(!isBok(b) && b.status==="Lokal fil") b.source="Lokal fil"; }
     if(id==="e_format" && b.source && !sourceOpts({...b,source:""}).includes(b.source) && ["Köpt","Lånad","Lokal fil"].includes(b.source)) b.source="";
@@ -1863,7 +1886,7 @@ document.addEventListener("keydown", e=>{
   if((e.key==="Enter"||e.key===" ") && e.target.matches("[role=button][data-drill],[role=button][data-book],[role=button][data-planadd],[role=button][data-planmonth],[role=button][data-seropen],[role=button][data-cleanopen],[role=button][data-pickfound]")){ e.preventDefault(); e.target.click(); }
 });
 document.addEventListener("click", async e=>{
-  const t=e.target.closest("[data-act],[data-phase],[data-book],[data-rate],[data-scope],[data-ser],[data-serread],[data-aw],[data-plan],[data-planrm],[data-planadd],[data-q],[data-genre],[data-awsrc],[data-ng],[data-planmonth],[data-py],[data-more],[data-author],[data-af],[data-seropen],[data-cleanopen],[data-fixauthor],[data-undotitle],[data-libsave],[data-libretire],[data-abandon],[data-apply],[data-skip],[data-gotoseries],[data-dupch],[data-pickfound],[data-ignore],[data-dropf],[data-addnew],[data-drill],[data-nbinfo]");
+  const t=e.target.closest("[data-act],[data-phase],[data-book],[data-rate],[data-scope],[data-ser],[data-serread],[data-aw],[data-plan],[data-planrm],[data-planadd],[data-q],[data-genre],[data-awsrc],[data-ng],[data-planmonth],[data-py],[data-more],[data-author],[data-af],[data-seropen],[data-cleanopen],[data-fixauthor],[data-undotitle],[data-libsave],[data-libretire],[data-abandon],[data-apply],[data-skip],[data-gotoseries],[data-dupch],[data-pickfound],[data-ignore],[data-dropf],[data-addnew],[data-drill],[data-nbinfo],[data-bl]");
   if(!t) return;
   const d=t.dataset;
   if(d.act==="close-bg" && e.target!==t) return;
@@ -1883,6 +1906,7 @@ document.addEventListener("click", async e=>{
     try{ await queued("seriesState",()=>S.db.doc("lib/seriesState").set({abandoned:ab})); toast(ab[k]?"Serien är markerad som avbruten. Dess olästa böcker föreslås inte längre i Nästa bok.":"Serien är aktiv igen."); }catch(e){ dbFail(e); } return; }
   if(d.pickfound!=null){ pickFound(+d.pickfound); return; }
   if(d.dupch){ S.dupChoice={...(S.dupChoice||{})}; S.dupChoice[d.dupch] = S.dupChoice[d.dupch]===d.v ? undefined : d.v; if(!S.dupChoice[d.dupch]) delete S.dupChoice[d.dupch]; render(); return; }
+  if(d.bl){ await backlogAct(d.bl, d.id); return; }
   if(d.addnew){ await addNewBook(d.addnew); return; }
   if(d.nbinfo){ if(S.nbOpen===d.nbinfo){ S.nbOpen=null; render(); return; } S.nbOpen=d.nbinfo; render(); const n=newBookList().find(x=>x.key===d.nbinfo); if(n){ await loadNbInfo(n); if(S.nbOpen===d.nbinfo) render(); } return; }
   if(d.drill!=null){ S.statDrill=S.statDrill===d.drill?null:d.drill; render(); setTimeout(()=>{ const el=document.getElementById("drill"); if(el&&S.statDrill) el.scrollIntoView({behavior:"smooth",block:"start"}); },50); return; }
