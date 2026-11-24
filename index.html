@@ -1231,6 +1231,7 @@ function renderModal(){
   const formats=[...new Set(S.books.map(x=>x.format).filter(Boolean))].sort();
   const langs=[...new Set(S.books.flatMap(x=>[x.lang,x.origLang]).filter(Boolean).map(langName))].sort((a,b)=>a.localeCompare(b,"sv"));
   const inp=(k,l,type="text",extra="")=>`<label>${l}<input type="${type}" id="e_${k}" value="${esc((k==="lang"||k==="origLang")?langName(b[k]):(b[k]??""))}" ${extra}></label>`;
+  const inpFirst=(...a)=>inp(...a).replace("<label>",'<label style="grid-column:1">');
   const pick=(k,l,cur,opts)=>{ cur=cur||""; const all=[...new Set([...opts,cur].filter(Boolean))].sort((a,b)=>a.localeCompare(b,"sv"));
     return `<label>${l}<select id="e_${k}" data-pick="${k}"><option value="">–</option>${all.map(o=>`<option ${o===cur?"selected":""} value="${esc(o)}">${esc(o)}</option>`).join("")}<option value="__new">+ Lägg till ny …</option></select></label>`; };
   const extras=Object.entries(b.extra||{}).filter(([k])=>!HIDE_EXTRA.test(k.trim()));
@@ -1267,18 +1268,18 @@ function renderModal(){
       ${inp("pages","Sidor","number")}
       ${pick("series","Serie",b.series,[...new Set([...S.series.map(x=>(x.series||"").trim()),...S.books.map(x=>x.series)].filter(Boolean))])}
       ${inp("num","Nummer i serien")}
+      ${inp("added","Tillagd","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"')}
       <label>Typ<select id="e_type"><option value="bok" ${kindOf(b)!=="novella"?"selected":""}>Roman</option><option value="novella" ${kindOf(b)==="novella"?"selected":""}>Novell</option></select></label>
       `:""}
       ${!b.series&&seriesOf(b)?`<p class="small muted" style="grid-column:1/-1;margin:0">Förslag från ${esc(seriesOf(b).src||"Series-fliken")}: <b>${esc(seriesOf(b).name)}</b> <button type="button" class="btn small" data-act="useseries" style="font-size:13px;padding:4px 8px">Använd</button></p>`:""}
       <label>Status<select id="e_status">${STATUSES.map(s=>`<option ${b.status===s?"selected":""} value="${esc(s)}">${s||"–"}</option>`).join("")}</select></label>
-      ${isEpubOrUnknown(b)?`<label>Libby<select id="e_libby"><option value="">Vet inte</option><option value="ja" ${b.libby==="ja"?"selected":""}>Ja, finns</option><option value="nej" ${b.libby==="nej"?"selected":""}>Nej</option><option value="notify" ${b.libby==="notify"?"selected":""}>🔔 Notify</option></select></label>`:""}
       ${pick("source","Källa",b.source,sources)}
       <label>Format<select id="e_format">${[...new Set(["","EPUB","Bok",b.format||""])].map(v=>`<option value="${esc(v)}" ${String(b.format||"")===v?"selected":""}>${v==="Bok"?"Fysisk bok":v||"–"}</option>`).join("")}</select></label>
-      ${inp("added","Tillagd","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"')}
-      ${inp("started","Började läsa","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"')}
-      ${inp("read","Läst klart","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"')}
-      ${inp("loaned","Lånedatum","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"')}
+      ${isEpubOrUnknown(b)?`<label style="grid-column:1">Libby<select id="e_libby"><option value="">Vet inte</option><option value="ja" ${b.libby==="ja"?"selected":""}>Ja, finns</option><option value="nej" ${b.libby==="nej"?"selected":""}>Nej</option><option value="notify" ${b.libby==="notify"?"selected":""}>🔔 Notify</option></select></label>`:""}
+      ${(isEpubOrUnknown(b)?inp:inpFirst)("loaned","Lånedatum","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"')}
       ${loanDays(b)?(b.loaned&&/^\d{4}-\d{2}-\d{2}$/.test(b.loaned)?`<p class="small muted" style="grid-column:1/-1;margin:0">Lämnas tillbaka ${esc(fmtDate(addDaysISO(b.loaned,loanDays(b))))} (${loanDays(b)} dagars lånetid på ${esc(b.source)}).</p>`:(b.due?`<p class="small muted" style="grid-column:1/-1;margin:0">Lämnas tillbaka ${esc(fmtDate(b.due))}.</p>`:"")):inp("due","Lämnas tillbaka","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}" title="Källan har ingen lånetid inlagd under Bibliotek, så skriv datumet själv"')}
+      ${inpFirst("started","Började läsa","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"')}
+      ${inp("read","Läst klart","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"')}
       <label class="wide">Kommentar<textarea id="e_comment" rows="3">${esc(b.comment||"")}</textarea></label>
     </div>
     <div class="row">
