@@ -52,7 +52,7 @@ main{flex:1;overflow:auto;padding:16px;}
 @media (max-width:700px){
   .top{flex-wrap:wrap}
   nav.tabs{order:3;position:fixed;bottom:0;left:0;right:0;margin:0;background:var(--surface);border-top:1px solid var(--line);justify-content:space-around;padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:5}
-  nav.tabs a{font-size:13px;padding:8px 6px}
+  nav.tabs a{font-size:13px;padding:8px 4px} nav.tabs .badge{margin-left:3px;font-size:11px;min-width:16px;padding:0 4px}
   main{padding-bottom:80px}
 }
 .btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 12px;cursor:pointer}
@@ -181,6 +181,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
     <a href="#bocker">Böcker</a>
     <a href="#nasta">Nästa bok</a>
     <a href="#plan">Plan</a>
+    <a href="#stada" id="tabInbox">Inkorg</a>
     <a href="#mer">Mer</a>
   </nav>
 </header>
@@ -739,8 +740,9 @@ function viewHtml(){
   return html;
 }
 function render(){
-  const v=view(); const top=["statistik","serier","priser","stada","bibliotek","import","bortvalda"].includes(v)?"mer":(v==="forfattare"?"bocker":v);
+  const v=view(); const top=["statistik","serier","priser","bibliotek","import","bortvalda"].includes(v)?"mer":(v==="forfattare"?"bocker":v);
   document.querySelectorAll("#tabs a").forEach(a=>a.setAttribute("aria-current", a.getAttribute("href")==="#"+top?"page":"false"));
+  { const t=$("#tabInbox"); if(t){ let n=0; try{ if(S.loaded) n=cleanProposals().length+newBookList().length+backlogAsk().length; }catch(_){} t.innerHTML="Inkorg"+(n?`<span class="badge">${n}</span>`:""); } }
   const main=$("#main"); const scroll=main.scrollTop;
   const ae=document.activeElement; const fid=ae&&ae.id&&main.contains(ae)?ae.id:null; let sel=null; try{ sel=fid?[ae.selectionStart,ae.selectionEnd]:null; }catch(_){}
   const html=viewHtml();
@@ -1062,7 +1064,6 @@ function moreView(){
     ${it("priser","Priser","Hugo, Nebula och Goodreads Choice")}
     ${it("bibliotek","Bibliotek","Köer och lån per bibliotek")}
     ${it("bortvalda","Bortvalda",`Böcker du har flyttat från listan (${S.books.filter(b=>phase(b)==="dnf").length})`)}
-    <a href="#stada"><b>Inkorg${n?`<span class="badge">${n}</span>`:""}</b><span>Nya böcker, förslag och saker som behöver dig</span></a>
     ${it("import","Säkerhetskopia","Ladda ner allt som en fil, eller läs in från fil")}
   </div>
   <div class="card row" style="margin-top:8px"><span class="grow small">Inloggad som <b>${esc(S.authUser&&S.authUser.email||"")}</b></span><button class="btn" data-act="logout">Logga ut</button></div>`;
