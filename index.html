@@ -823,7 +823,7 @@ function booksView(){
   <div class="row small">
     <select id="fStatus" aria-label="Status"><option value="">Alla statusar</option>${STATUSES.filter(Boolean).map(s=>`<option ${f.status===s?"selected":""}>${esc(s)}</option>`).join("")}</select>
     <select id="fKind" aria-label="Typ"><option value="">Romaner och noveller</option><option value="bok" ${f.kind==="bok"?"selected":""}>Bara romaner</option><option value="novella" ${f.kind==="novella"?"selected":""}>Bara noveller</option></select>
-    <select id="fSer" aria-label="Serie"><option value="">Med och utan serie</option><option value="in" ${f.ser==="in"?"selected":""}>Bara serieböcker</option><option value="noname" ${f.ser==="noname"?"selected":""}>Serienummer men inget serienamn</option><option value="none" ${f.ser==="none"?"selected":""}>Fristående</option></select>
+    <select id="fSer" aria-label="Serie"><option value="">Med och utan serie</option><option value="in" ${f.ser==="in"?"selected":""}>Bara serieböcker</option><option value="none" ${f.ser==="none"?"selected":""}>Fristående</option></select>
     <select id="fAuth" aria-label="Författare"><option value="">Alla författare</option><option value="more" ${f.auth==="more"?"selected":""}>Författare jag vill läsa mer av</option><option value="less" ${f.auth==="less"?"selected":""}>Författare jag inte vill läsa mer av</option></select>
     <select id="fSort" aria-label="Sortering">${[["added","Senast tillagd"],["read","Senast läst"],["title","Titel A–Ö"],["author","Författare A–Ö"],["rating","Betyg"],["pages","Flest sidor"],["year","Nyast utgiven"]].map(([v,l])=>`<option value="${v}" ${f.sort===v?"selected":""}>${l}</option>`).join("")}</select>
   </div>
