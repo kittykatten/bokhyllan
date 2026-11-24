@@ -813,7 +813,7 @@ function bookRow(b){
     .concat(sr ? [seriesLink(sr.name, sr.name+(sr.num?" "+numLabel(sr.num):""))+(isAbandoned(sr.name)?" (avbruten serie)":"")] : (b.num?[esc("Serie "+numLabel(b.num)+", namn saknas")]:[])).join(" · ");
   const nr=allReads(b).length;
   const when = p==="read"?(nr>1?"Läst "+nr+" ggr, senast ":"Läst ")+fmtDate(b.read) : p==="reading"?(b.reread?"Läser om, började ":"Började ")+fmtDate(b.started) : b.reread?"Läsa om"+(b.status?" · "+b.status:"") : b.status||"";
-  const lib = p!=="read" && p!=="dnf" && (b.libby==="ja"||b.libby==="notify") ? (b.libby==="ja"?"📚 Libby":"🔔 Libby") : "";
+  const lib = p!=="read" && p!=="dnf" && isEpubOrUnknown(b) && (b.libby==="ja"||b.libby==="notify") ? (b.libby==="ja"?"📚 Libby":"🔔 Libby") : "";
   return `<div class="item" data-book="${esc(b.id)}" tabindex="0" role="button">
     <span class="stripe ph-${p}"></span>${coverHtml(b)}
     <div><div class="t">${esc(b.title)}</div><div class="a">${authorLink(b.author)}</div><div class="m">${meta}</div></div>
@@ -943,6 +943,9 @@ async function findCovers(){
 /* --- shared helpers for home / clean / libraries --- */
 const HOLD_ST=["On hold","Suspended"];   // "Waitlist" = the title has a waitlist, not that you're in it
 const LOAN_ST=["Lånad"];
+function addDaysISO(iso,n){ const d=new Date(iso+"T12:00:00"); d.setDate(d.getDate()+n); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function loanDays(b){ const l=libOf(b); return l&&+l.days||0; }
+function isEpubOrUnknown(b){ const f=String(b.format||"").trim().toUpperCase(); return !f || f==="EPUB"; }
 function daysUntil(iso){ if(!/^\d{4}-\d{2}-\d{2}$/.test(iso||"")) return null; const d=new Date(iso+"T12:00:00"); const n=new Date(); n.setHours(12,0,0,0); return Math.round((d-n)/864e5); }
 function libOf(b){ const s=norm(b.source); return S.libs.find(l=>norm(l.name)===s); }
 async function batchUpdate(patches){
@@ -1268,13 +1271,14 @@ function renderModal(){
       `:""}
       ${!b.series&&seriesOf(b)?`<p class="small muted" style="grid-column:1/-1;margin:0">Förslag från ${esc(seriesOf(b).src||"Series-fliken")}: <b>${esc(seriesOf(b).name)}</b> <button type="button" class="btn small" data-act="useseries" style="font-size:13px;padding:4px 8px">Använd</button></p>`:""}
       <label>Status<select id="e_status">${STATUSES.map(s=>`<option ${b.status===s?"selected":""} value="${esc(s)}">${s||"–"}</option>`).join("")}</select></label>
-      <label>Libby<select id="e_libby"><option value="">Vet inte</option><option value="ja" ${b.libby==="ja"?"selected":""}>Ja, finns</option><option value="nej" ${b.libby==="nej"?"selected":""}>Nej</option><option value="notify" ${b.libby==="notify"?"selected":""}>🔔 Notify</option></select></label>
+      ${isEpubOrUnknown(b)?`<label>Libby<select id="e_libby"><option value="">Vet inte</option><option value="ja" ${b.libby==="ja"?"selected":""}>Ja, finns</option><option value="nej" ${b.libby==="nej"?"selected":""}>Nej</option><option value="notify" ${b.libby==="notify"?"selected":""}>🔔 Notify</option></select></label>`:""}
       ${pick("source","Källa",b.source,sources)}
-      ${pick("format","Format",b.format,formats)}
+      <label>Format<select id="e_format">${[...new Set(["","EPUB","Bok",b.format||""])].map(v=>`<option value="${esc(v)}" ${String(b.format||"")===v?"selected":""}>${v==="Bok"?"Fysisk bok":v||"–"}</option>`).join("")}</select></label>
       ${inp("added","Tillagd","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"')}
       ${inp("started","Började läsa","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"')}
       ${inp("read","Läst klart","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"')}
-      ${inp("due","Lånad till (återlämnas)","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"')}
+      ${inp("loaned","Lånedatum","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"')}
+      ${loanDays(b)?(b.loaned&&/^\d{4}-\d{2}-\d{2}$/.test(b.loaned)?`<p class="small muted" style="grid-column:1/-1;margin:0">Lämnas tillbaka ${esc(fmtDate(addDaysISO(b.loaned,loanDays(b))))} (${loanDays(b)} dagars lånetid på ${esc(b.source)}).</p>`:(b.due?`<p class="small muted" style="grid-column:1/-1;margin:0">Lämnas tillbaka ${esc(fmtDate(b.due))}.</p>`:"")):inp("due","Lämnas tillbaka","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}" title="Källan har ingen lånetid inlagd under Bibliotek, så skriv datumet själv"')}
       <label class="wide">Kommentar<textarea id="e_comment" rows="3">${esc(b.comment||"")}</textarea></label>
     </div>
     <div class="row">
@@ -1314,7 +1318,7 @@ function ratingBlock(b){
 }
 function readForm(){
   const b=S.edit; const g=k=>{ const el=$("#e_"+k); return el?el.value.trim():b[k]; };
-  for(const k of ["title","author","gender","lang","origLang","series","num","status","source","format","added","started","read","due","comment","isbn","libby"]) b[k]=g(k);
+  for(const k of ["title","author","gender","lang","origLang","series","num","status","source","format","added","started","read","due","comment","isbn","libby","loaned"]) b[k]=g(k);
   { const el=$("#e_type"); if(el){ const auto=kindOf({...b,type:""}); b.type = el.value===auto ? "" : el.value; } }
   b.year = g("year")?+g("year"):""; b.pages=g("pages")?+g("pages"):"";
 }
@@ -1323,9 +1327,10 @@ async function saveBook(close=true){
   if(!b.title){ toast("Boken behöver en titel."); return; }
   const id=b.id||uid("b"); const doc=b._doc;
   const item={...b}; delete item.id; delete item._doc;
-  for(const k of ["gender","lang","origLang","series","num","status","source","format","added","started","read","due","comment","year","pages","libby"]) if(item[k]==null) item[k]="";
+  for(const k of ["gender","lang","origLang","series","num","status","source","format","added","started","read","due","comment","year","pages","libby","loaned"]) if(item[k]==null) item[k]="";
   item.rating=+item.rating||0; item.extra=item.extra||{}; item.genres=item.genres||[]; item.ratingForm=item.ratingForm||{}; item.moreAuthor=+item.moreAuthor||0; item.num=firstNum(item.num);
-  for(const k of ["added","started","read","due"]){ if(item[k]){ const v=parseDate(String(item[k]).replace(/^(\d{4})-(\d{1,2})-(\d{1,2})$/,(m,y,mo,d)=>y+"-"+mo.padStart(2,"0")+"-"+d.padStart(2,"0"))); if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){ toast("Skriv datum som ÅÅÅÅ-MM-DD, till exempel 2026-11-23."); return; } item[k]=v; } }
+  for(const k of ["added","started","read","due","loaned"]){ if(item[k]){ const v=parseDate(String(item[k]).replace(/^(\d{4})-(\d{1,2})-(\d{1,2})$/,(m,y,mo,d)=>y+"-"+mo.padStart(2,"0")+"-"+d.padStart(2,"0"))); if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){ toast("Skriv datum som ÅÅÅÅ-MM-DD, till exempel 2026-11-23."); return; } item[k]=v; } }
+  { const ld=loanDays(item); if(item.loaned && ld) item.due=addDaysISO(item.loaned, ld); }
   const orig=S.books.find(x=>x.id===b.id);
   if(orig && orig.filled){ const f={}; for(const k of Object.keys(orig.filled)) f[k]=(String(orig[k])===String(item[k]))?orig.filled[k]:null; item.filled=f; }
   try{ const used=await putItem("books", id, item, doc); b.id=id; b._doc=used; toast("Sparat"); if(close){ S.edit=null; S.confirmDel=false; renderModal(); } }
@@ -1545,7 +1550,7 @@ function nextView(){
   const langs=[...new Set(S.books.filter(b=>phase(b)==="tbr"||phase(b)==="reading").map(b=>langName(b.lang)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"sv"));
   let list=S.books.filter(b=>phase(b)==="tbr");
   if(n.avail) list=list.filter(b=>AVAILABLE.includes(b.status));
-  if(n.libby) list=list.filter(b=>b.libby==="ja");
+  if(n.libby) list=list.filter(b=>b.libby==="ja" && isEpubOrUnknown(b));
   if(n.genre) list=list.filter(b=>genresOf(b).includes(n.genre));
   if(n.lang) list=list.filter(b=>langName(b.lang)===n.lang);
   if(n.maxPages) list=list.filter(b=>+b.pages && +b.pages<=+n.maxPages);
@@ -1658,6 +1663,7 @@ document.addEventListener("change", e=>{
   if(id==="fAuth"){ S.f.auth=e.target.value; render(); }
   if(id==="importFile" && e.target.files && e.target.files[0]){ e.target.files[0].text().then(importData); return; }
   if(id==="statYear"){ S.statYear=+e.target.value; render(); }
+  if((id==="e_format"||id==="e_source"||id==="e_loaned") && S.edit && e.target.value!=="__new"){ readForm(); renderModal(); return; }
   if(e.target.dataset && e.target.dataset.pick && e.target.value==="__new"){
     const inpEl=document.createElement("input"); inpEl.type="text"; inpEl.id=e.target.id; inpEl.placeholder="Skriv ny …";
     e.target.replaceWith(inpEl); inpEl.focus(); return;
