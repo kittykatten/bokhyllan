@@ -1277,7 +1277,8 @@ function renderModal(){
       ${isEpubOrUnknown(b)?`<label style="grid-column:1">Libby<select id="e_libby"><option value="">Vet inte</option><option value="ja" ${b.libby==="ja"?"selected":""}>Ja, finns</option><option value="nej" ${b.libby==="nej"?"selected":""}>Nej</option><option value="notify" ${b.libby==="notify"?"selected":""}>🔔 Notify</option></select></label>`:""}
       ${isEpubOrUnknown(b)?inp("loaned","Lånedatum","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"'):""}
       ${!isEpubOrUnknown(b)?"":loanDays(b)?(b.loaned&&/^\d{4}-\d{2}-\d{2}$/.test(b.loaned)?`<p class="small muted" style="grid-column:1/-1;margin:0">Lämnas tillbaka ${esc(fmtDate(addDaysISO(b.loaned,loanDays(b))))} (${loanDays(b)} dagars lånetid på ${esc(b.source)}).</p>`:(b.due?`<p class="small muted" style="grid-column:1/-1;margin:0">Lämnas tillbaka ${esc(fmtDate(b.due))}.</p>`:"")):inp("due","Lämnas tillbaka","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}" title="Källan har ingen lånetid inlagd under Bibliotek, så skriv datumet själv"')}
-      ${inpFirst("started","Började läsa","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"')}
+      ${!b.read?planSelect(b):""}
+      ${(b.read?inpFirst:inp)("started","Började läsa","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"')}
       ${inp("read","Läst klart","text",'placeholder="ÅÅÅÅ-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}"')}
       <label class="wide">Kommentar<textarea id="e_comment" rows="3">${esc(b.comment||"")}</textarea></label>
     </div>
@@ -1287,6 +1288,19 @@ function renderModal(){
       ${b.id?(S.confirmDel?`<span class="small">Ta bort boken för gott?</span><button class="btn danger" data-act="del-yes">Ja, ta bort</button><button class="btn" data-act="del-no">Nej</button>`:`<button class="btn danger" data-act="del">Ta bort</button>`):""}
     </div>
   </div></div>`;
+}
+function planOf(b){ const t=norm(b.title); if(!t) return ""; return Object.keys(S.plans||{}).sort().reverse().find(k=>(S.plans[k]||[]).some(i=>norm(i.title)===t))||""; }
+function planSelect(b){
+  const cur=b.plan!==undefined?b.plan:planOf(b); const d=new Date(); const keys=[];
+  for(let i=0;i<12;i++){ keys.push(yymm(new Date(d.getFullYear(), d.getMonth()+i, 1))); }
+  if(cur && !keys.includes(cur)) keys.unshift(cur);
+  return `<label style="grid-column:1">Plan<select id="e_plan"><option value="">–</option>${keys.map(k=>`<option value="${k}" ${k===cur?"selected":""}>${esc(planLabel(k))}</option>`).join("")}</select></label>`;
+}
+async function movePlan(title, to){
+  const t=norm(title); if(!t) return; const months={}; let changed=false;
+  for(const [k,list] of Object.entries(S.plans||{})){ const f=(list||[]).filter(i=>norm(i.title)!==t); if(f.length!==(list||[]).length) changed=true; months[k]=f; }
+  if(to){ const b=findBook(title)||{}; (months[to] ||= []).push({title, pages:b.pages||"", status:b.status||""}); changed=true; }
+  if(changed) await savePlans(months);
 }
 function bookFacts(b){
   const lang=langName(b.lang), orig=langName(b.origLang);
@@ -1319,6 +1333,7 @@ function ratingBlock(b){
 function readForm(){
   const b=S.edit; const g=k=>{ const el=$("#e_"+k); return el?el.value.trim():b[k]; };
   for(const k of ["title","author","gender","lang","origLang","series","num","status","source","format","added","started","read","due","comment","isbn","libby","loaned"]) b[k]=g(k);
+  { const el=$("#e_plan"); if(el) b.plan=el.value; }
   { const el=$("#e_type"); if(el){ const auto=kindOf({...b,type:""}); b.type = el.value===auto ? "" : el.value; } }
   b.year = g("year")?+g("year"):""; b.pages=g("pages")?+g("pages"):"";
 }
@@ -1326,14 +1341,17 @@ async function saveBook(close=true){
   readForm(); const b=S.edit;
   if(!b.title){ toast("Boken behöver en titel."); return; }
   const id=b.id||uid("b"); const doc=b._doc;
-  const item={...b}; delete item.id; delete item._doc;
+  const item={...b}; delete item.id; delete item._doc; delete item.plan;
+  const planTo=b.plan; const planFrom=b.id?planOf(S.books.find(x=>x.id===b.id)||b):"";
   for(const k of ["gender","lang","origLang","series","num","status","source","format","added","started","read","due","comment","year","pages","libby","loaned"]) if(item[k]==null) item[k]="";
   item.rating=+item.rating||0; item.extra=item.extra||{}; item.genres=item.genres||[]; item.ratingForm=item.ratingForm||{}; item.moreAuthor=+item.moreAuthor||0; item.num=firstNum(item.num);
   for(const k of ["added","started","read","due","loaned"]){ if(item[k]){ const v=parseDate(String(item[k]).replace(/^(\d{4})-(\d{1,2})-(\d{1,2})$/,(m,y,mo,d)=>y+"-"+mo.padStart(2,"0")+"-"+d.padStart(2,"0"))); if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){ toast("Skriv datum som ÅÅÅÅ-MM-DD, till exempel 2026-11-23."); return; } item[k]=v; } }
   { const ld=loanDays(item); if(item.loaned && ld) item.due=addDaysISO(item.loaned, ld); }
   const orig=S.books.find(x=>x.id===b.id);
   if(orig && orig.filled){ const f={}; for(const k of Object.keys(orig.filled)) f[k]=(String(orig[k])===String(item[k]))?orig.filled[k]:null; item.filled=f; }
-  try{ const used=await putItem("books", id, item, doc); b.id=id; b._doc=used; toast("Sparat"); if(close){ S.edit=null; S.confirmDel=false; renderModal(); } }
+  try{ const used=await putItem("books", id, item, doc); b.id=id; b._doc=used;
+    if(planTo!==undefined && planTo!==planFrom){ try{ await movePlan(item.title, planTo); }catch(_){} }
+    toast(planTo!==undefined && planTo!==planFrom ? (planTo?"Sparat och lagt i planen för "+planLabel(planTo):"Sparat och borttaget ur planen") : "Sparat"); if(close){ S.edit=null; S.confirmDel=false; renderModal(); } }
   catch(e){}
 }
 
