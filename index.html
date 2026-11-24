@@ -204,7 +204,7 @@ const CHUNK = 150;
 const MON_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const MON_SV = ["jan","feb","mar","apr","maj","jun","jul","aug","sep","okt","nov","dec"];
 const MON_SV_LONG = ["januari","februari","mars","april","maj","juni","juli","augusti","september","oktober","november","december"];
-const STATUSES = ["","Ska lånas","Ska köpas","Köpt","Lånad","Lokal fil","Waitlist","On hold","Kanske","Gav upp"];
+const STATUSES = ["","Ska lånas","Ska köpas","Köpt","Lånad","Lokal fil","Waitlist","On hold","Suspended","Kanske","Gav upp"];
 const DROP_REASONS=["Slutade läsa","Lockar inte längre","Har legat för länge","Går inte att få tag på"];
 const PHASE_LABEL = {tbr:"Att läsa", reading:"Läser", read:"Läst", dnf:"Bortvald"};
 const GENRES = ["Skönlitteratur","Historisk roman","Deckare & thriller","Fantasy","Science fiction","Skräck","Facklitteratur"];
@@ -419,7 +419,7 @@ async function maybeEnrich(){
       const hit=order.find(([re])=>re.test(t)); put(b,{series:"Harry Potter", num:hit?String(hit[1]):(b.num?firstNum(b.num):"")}); }
     // Corrections Kitty has given by hand.
     if(/^\s*audrain\.?\s*,?\s*a\.?\s*$/i.test(b.author||"")) put(b,{author:"Ashley Audrain", seriesTried:true, wdSeries:null});
-    if(b.status==="Suspended") put(b,{status:"On hold"}); else if(b.status==="Backlog") put(b,{status:""});
+    if(b.status==="Backlog") put(b,{status:""});
     if(!b.libby && b.extra && b.extra.Bi){ const v=String(b.extra.Bi).trim().toLowerCase(); const m=v==="yes"?"ja":(v==="no"||v==="not")?"nej":v==="notify"?"notify":""; if(m) put(b,{libby:m}); }
     if(!b.series){ const nt=norm(b.title); for(const r of SERIES_RULES){ if(!r.a.test(b.author||"")) continue;
       const k=Object.keys(r.t).find(k=>nt===k || nt.endsWith(" "+k) || nt.startsWith(k+" ")); if(k){ put(b,r.t[k]===""?{series:r.s}:{series:r.s, num:String(r.t[k])}); break; } } }
@@ -693,7 +693,7 @@ async function runImport(){
 }
 
 /* ---------- views ---------- */
-function view(){ const h=(location.hash||"").slice(1); return ["hem","bocker","nasta","statistik","serier","priser","plan","import","forfattare","mer","stada","bibliotek"].includes(h)?h:"hem"; }
+function view(){ const h=(location.hash||"").slice(1); return ["hem","bocker","nasta","statistik","serier","priser","plan","import","forfattare","mer","stada","bibliotek","bortvalda"].includes(h)?h:"hem"; }
 function viewHtml(){
   let html;
   if(S.authState==="out") html = loginView();
@@ -701,12 +701,12 @@ function viewHtml(){
   else if(S.isOwner===false) html = notice("Den här appen är privat och visar bara data för sin ägare.",true);
   else if(S.importing || view()==="import" || (S.loaded && !S.books.length)) html = importView();
   else if(!S.loaded) html = `<div class="empty">Läser in dina böcker …</div>`;
-  else html = ({hem:homeView, mer:moreView, stada:cleanView, bibliotek:libraryView, forfattare:authorView, bocker:booksView, nasta:nextView, statistik:statsView, serier:seriesView, priser:awardsView, plan:planView})[view()]();
+  else html = ({hem:homeView, mer:moreView, stada:cleanView, bibliotek:libraryView, bortvalda:droppedView, forfattare:authorView, bocker:booksView, nasta:nextView, statistik:statsView, serier:seriesView, priser:awardsView, plan:planView})[view()]();
   if(S.db && S.error) html = notice(S.error,true) + html;
   return html;
 }
 function render(){
-  const v=view(); const top=["statistik","serier","priser","stada","bibliotek","import"].includes(v)?"mer":(v==="forfattare"?"bocker":v);
+  const v=view(); const top=["statistik","serier","priser","stada","bibliotek","import","bortvalda"].includes(v)?"mer":(v==="forfattare"?"bocker":v);
   document.querySelectorAll("#tabs a").forEach(a=>a.setAttribute("aria-current", a.getAttribute("href")==="#"+top?"page":"false"));
   const main=$("#main"); const scroll=main.scrollTop;
   const ae=document.activeElement; const fid=ae&&ae.id&&main.contains(ae)?ae.id:null; let sel=null; try{ sel=fid?[ae.selectionStart,ae.selectionEnd]:null; }catch(_){}
@@ -769,6 +769,7 @@ function downloadBackup(){
 function filteredBooks(){
   const f=S.f; const q=norm(f.q); const AM=f.auth?authorMore():{};
   let list=S.books.filter(b=>{
+    if(phase(b)==="dnf") return false;
     if(f.phase && phase(b)!==f.phase) return false;
     if(f.status && (b.status||"")!==f.status) return false;
     if(f.kind && kindOf(b)!==f.kind) return false;
@@ -793,7 +794,7 @@ function booksView(){
     <input type="search" id="q" placeholder="Sök titel, författare, serie …" value="${esc(f.q)}" aria-label="Sök">
     <button class="btn primary" data-act="new">+ Ny bok</button>
   </div>
-  <div class="chips">${chip("tbr","Att läsa",counts.tbr)}${chip("reading","Läser",counts.reading)}${chip("read","Lästa",counts.read)}${chip("dnf","Bortvalda",counts.dnf)}${chip("","Alla",S.books.length)}</div>
+  <div class="chips">${chip("tbr","Att läsa",counts.tbr)}${chip("reading","Läser",counts.reading)}${chip("read","Lästa",counts.read)}${chip("","Alla",S.books.length-counts.dnf)}</div>
   <div class="row small">
     <select id="fStatus" aria-label="Status"><option value="">Alla statusar</option>${STATUSES.filter(Boolean).map(s=>`<option ${f.status===s?"selected":""}>${esc(s)}</option>`).join("")}</select>
     <select id="fKind" aria-label="Typ"><option value="">Romaner och noveller</option><option value="bok" ${f.kind==="bok"?"selected":""}>Bara romaner</option><option value="novella" ${f.kind==="novella"?"selected":""}>Bara noveller</option></select>
@@ -943,7 +944,7 @@ async function findCovers(){
 }
 
 /* --- shared helpers for home / clean / libraries --- */
-const HOLD_ST=["On hold"];   // "Waitlist" = the title has a waitlist, not that you're in it
+const HOLD_ST=["On hold","Suspended"];   // "Waitlist" = the title has a waitlist, not that you're in it
 const LOAN_ST=["Lånad"];
 function addDaysISO(iso,n){ const d=new Date(iso+"T12:00:00"); d.setDate(d.getDate()+n); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function loanDays(b){ const l=libOf(b); return l&&+l.days||0; }
@@ -999,6 +1000,7 @@ function moreView(){
     ${it("statistik","Statistik","Böcker och sidor per år och månad, fördelningar")}
     ${it("priser","Priser","Hugo, Nebula och Goodreads Choice")}
     ${it("bibliotek","Bibliotek","Köer och lån per bibliotek")}
+    ${it("bortvalda","Bortvalda",`Böcker du har flyttat från listan (${S.books.filter(b=>phase(b)==="dnf").length})`)}
     <a href="#stada"><b>Städa${n?`<span class="badge">${n}</span>`:""}</b><span>Saker i listan som ser fel ut</span></a>
     ${it("import","Säkerhetskopia","Ladda ner allt som en fil, eller läs in från fil")}
   </div>
@@ -1006,6 +1008,17 @@ function moreView(){
 }
 
 /* --- libraries --- */
+function droppedView(){
+  const all=S.books.filter(b=>phase(b)==="dnf"); const r=S.dropF||"";
+  const reasonOf=b=>(b.dropped&&b.dropped.reason)||"Utan anledning";
+  const counts={}; all.forEach(b=>{ const k=reasonOf(b); counts[k]=(counts[k]||0)+1; });
+  const list=all.filter(b=>!r||reasonOf(b)===r).sort((a,b)=>String((b.dropped&&b.dropped.date)||b.added||"").localeCompare(String((a.dropped&&a.dropped.date)||a.added||"")));
+  const keys=[...DROP_REASONS,"Utan anledning"].filter(k=>counts[k]);
+  return `<h2 style="font-size:22px">Bortvalda</h2>
+  <p class="muted small" style="margin-top:0">Böcker du har flyttat från listan. De syns inte under Böcker, men finns kvar här. Öppna en bok för att flytta tillbaka den.</p>
+  ${keys.length>1?`<div class="chips"><button class="chip" data-dropf="" aria-pressed="${!r}">Alla<span class="n">${all.length}</span></button>${keys.map(k=>`<button class="chip" data-dropf="${esc(k)}" aria-pressed="${r===k}">${esc(k)}<span class="n">${counts[k]}</span></button>`).join("")}</div>`:""}
+  ${list.length?`<div class="list">${list.map(bookRow).join("")}</div>`:`<div class="empty">Inga bortvalda böcker.</div>`}`;
+}
 function libraryView(){
   const rows=S.libs.map((l,i)=>{
     if(l.active===false) return "";
@@ -1031,7 +1044,7 @@ function libraryView(){
   const old=S.libs.filter(l=>l.active===false).map(l=>{ const n=S.books.filter(b=>norm(b.source)===norm(l.name)); return `<div class="row small" style="padding:6px 0;border-bottom:1px solid var(--line)"><b class="grow">${esc(l.name)}</b><span class="muted">${n.length} böcker i historiken · ${n.filter(b=>phase(b)==="read").length} lästa</span></div>`; }).join("");
   return `<h2 style="font-size:22px">Bibliotek</h2>${rows||`<div class="empty">Inga bibliotek inlagda.</div>`}
   ${old?`<div class="card"><div class="sec-h"><h3>Tidigare bibliotek</h3></div>${old}<p class="muted small">Används inte längre. Böckerna ligger kvar i historik och statistik.</p></div>`:""}
-  <p class="muted small">Köer räknas på status On hold. Waitlist betyder att boken har kö på biblioteket, inte att du står i den, och räknas inte. Lån räknas på status Lånad. Biblioteket är det som står i bokens Källa.</p>`;
+  <p class="muted small">Köer räknas på status On hold och Suspended. Waitlist betyder att boken har kö på biblioteket, inte att du står i den, och räknas inte. Lån räknas på status Lånad. Biblioteket är det som står i bokens Källa.</p>`;
 }
 
 /* --- clean-up --- */
@@ -1296,7 +1309,7 @@ function renderModal(){
   </div></div>`;
 }
 // Format → status → source. Saved values outside the lists are kept and shown.
-const EPUB_ST=["","Ska lånas","Waitlist","On hold","Lånad","Lokal fil","Kanske"];
+const EPUB_ST=["","Ska lånas","Waitlist","On hold","Suspended","Lånad","Lokal fil","Kanske"];
 const BOK_ST=["","Ska köpas","Köpt","Lånad","Kanske"];
 function isBok(b){ return String(b.format||"").trim().toLowerCase()==="bok"; }
 function statusOpts(b){ const l=isBok(b)?BOK_ST:EPUB_ST; return b.status&&!l.includes(b.status)?[...l,b.status]:l; }
@@ -1717,7 +1730,7 @@ document.addEventListener("keydown", e=>{
   if((e.key==="Enter"||e.key===" ") && e.target.matches("[role=button][data-book],[role=button][data-planadd],[role=button][data-planmonth],[role=button][data-seropen],[role=button][data-cleanopen],[role=button][data-pickfound]")){ e.preventDefault(); e.target.click(); }
 });
 document.addEventListener("click", async e=>{
-  const t=e.target.closest("[data-act],[data-phase],[data-book],[data-rate],[data-scope],[data-ser],[data-serread],[data-aw],[data-plan],[data-planrm],[data-planadd],[data-q],[data-genre],[data-awsrc],[data-ng],[data-planmonth],[data-py],[data-more],[data-author],[data-af],[data-seropen],[data-cleanopen],[data-fixauthor],[data-undotitle],[data-libsave],[data-libretire],[data-abandon],[data-apply],[data-skip],[data-gotoseries],[data-dupch],[data-pickfound],[data-ignore]");
+  const t=e.target.closest("[data-act],[data-phase],[data-book],[data-rate],[data-scope],[data-ser],[data-serread],[data-aw],[data-plan],[data-planrm],[data-planadd],[data-q],[data-genre],[data-awsrc],[data-ng],[data-planmonth],[data-py],[data-more],[data-author],[data-af],[data-seropen],[data-cleanopen],[data-fixauthor],[data-undotitle],[data-libsave],[data-libretire],[data-abandon],[data-apply],[data-skip],[data-gotoseries],[data-dupch],[data-pickfound],[data-ignore],[data-dropf]");
   if(!t) return;
   const d=t.dataset;
   if(d.act==="close-bg" && e.target!==t) return;
@@ -1737,6 +1750,7 @@ document.addEventListener("click", async e=>{
     try{ await queued("seriesState",()=>S.db.doc("lib/seriesState").set({abandoned:ab})); toast(ab[k]?"Serien är markerad som avbruten. Dess olästa böcker föreslås inte längre i Nästa bok.":"Serien är aktiv igen."); }catch(e){ dbFail(e); } return; }
   if(d.pickfound!=null){ pickFound(+d.pickfound); return; }
   if(d.dupch){ S.dupChoice={...(S.dupChoice||{})}; S.dupChoice[d.dupch] = S.dupChoice[d.dupch]===d.v ? undefined : d.v; if(!S.dupChoice[d.dupch]) delete S.dupChoice[d.dupch]; render(); return; }
+  if(d.dropf!=null){ S.dropF=d.dropf; render(); return; }
   if(d.ignore){ await cleanIgnore(d.ignore.split("\n")); return; }
   if(d.skip){ (S.cleanSkip ||= new Set()); S.cleanSkip.has(d.skip)?S.cleanSkip.delete(d.skip):S.cleanSkip.add(d.skip); render(); return; }
   if(d.apply){ await applyProposals(d.apply); return; }
