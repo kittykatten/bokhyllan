@@ -1079,7 +1079,7 @@ function cleanProposals(){
 }
 async function cleanIgnore(keys){
   const add={}; keys.filter(Boolean).forEach(k=>add[k]=true);
-  try{ await queued("cleanState",()=>S.db.doc("lib/cleanState").set({ignore:add})); }catch(e){ dbFail(e); return; }
+  try{ await queued("cleanState",()=>S.db.doc("lib/cleanState").update({ignore:add})); }catch(e){ dbFail(e); return; }
   S.cleanIgnore={...(S.cleanIgnore||{}), ...add}; cleanIssues._r=null; cleanProposals._r=null; render();
   toast(keys.length>1?keys.length+" borttagna från Städa.":"Borttaget från Städa.");
 }
@@ -1095,7 +1095,7 @@ async function applyProposals(which){
     }
     for(const [id,pt] of Object.entries(p.patches)){ if(pt===null || patches[id]===null) patches[id]=null; else patches[id]={...(patches[id]||{}), ...pt}; }
     }
-  if(Object.keys(ignore).length){ try{ const cur={...(S.ignoreDups||{}), ...ignore}; await queued("cleanState",()=>S.db.doc("lib/cleanState").set({ignoreDups:cur})); }catch(e){ dbFail(e); return; } }
+  if(Object.keys(ignore).length){ try{ const cur={...(S.ignoreDups||{}), ...ignore}; await queued("cleanState",()=>S.db.doc("lib/cleanState").update({ignoreDups:cur})); }catch(e){ dbFail(e); return; } }
   if(!Object.keys(patches).length && !Object.keys(ignore).length){ toast("Inget att godkänna."); return; }
   if(!Object.keys(patches).length || await batchUpdate(patches)){ S.dupChoice={}; toast(list.length+" ändringar genomförda."); }
 }
