@@ -1179,7 +1179,7 @@ function cleanView(){
     return sec(x.key,x.title,x.count, `<p class="muted small" style="margin-top:0">Här finns inget säkert förslag. Öppna boken och fyll i själv, eller tryck ✕ så visas den inte här igen.</p>`+bookList(x.books, x.key==="noname"?(b=>"#"+esc(firstNum(b.num))):x.key==="oddlang"?(b=>esc([b.lang,b.origLang].filter(Boolean).join(" / "))):x.key==="epub"?(b=>"Format: "+esc(b.format)):null, x.key));
   }).join("");
   return `<h2 style="font-size:22px">Städa</h2>
-  ${P.length?`<div class="notice row"><span class="grow">Jag har gjort <b>${P.length} förslag</b> utifrån det som redan finns i din lista. Gå igenom dem, ta bort bocken på dem som är fel och godkänn resten. Dubbletter måste du välja själv.</span><button class="btn primary" data-apply="all" ${active.length?"":"disabled"}>Genomför ${active.length}</button></div>`:`<p class="muted">Inga förslag just nu.</p>`}
+  ${P.length?`<div class="notice row"><span class="grow">Jag har gjort <b>${P.length} förslag</b> utifrån det som redan finns i din lista. Gå igenom dem, ta bort bocken på dem som är fel och godkänn resten. Dubbletter måste du välja själv.</span><button class="btn primary" data-apply="all" ${active.length?"":"disabled"}>Genomför ${active.length}</button></div>`:(info?`<p class="muted">Inga förslag just nu.</p>`:"")}
   ${propSecs}
   ${info?`<h3 style="font-size:17px;margin-top:8px">Att titta på själv</h3>${info}`:(P.length?"":`<p class="muted">Allt är städat. ✨</p>`)}`;
 }
