@@ -1660,9 +1660,10 @@ function hbars(entries, total, id){
   const max=Math.max(1,...entries.map(e=>e[1]));
   return `<div class="hbars">${entries.map(([k,v,key])=>`<div class="hbar${id?" click":""}" ${id?`data-drill="${esc(id+"|"+(key!=null?key:k))}" role="button" tabindex="0" aria-pressed="${S.statDrill===id+"|"+(key!=null?key:k)}"`:""} title="${esc(k)}: ${v}${total?` (${Math.round(v/total*100)} %)`:""}${id?" · klicka för att se böckerna":""}"><span class="lab">${esc(k)}</span><span class="track"><span class="fill" style="width:${v/max*100}%;display:block"></span></span><span class="num">${v}</span></div>`).join("")}</div>`;
 }
-function tally(list, fn, limit=8){
+function tally(list, fn, limit=8, noRest=false){
   const c={}; list.forEach(b=>{ const k=fn(b); if(k) c[k]=(c[k]||0)+1; });
   let e=Object.entries(c).sort((a,b)=>b[1]-a[1]);
+  if(e.length>limit && noRest) return e.slice(0,limit);
   if(e.length>limit){ const rest=e.slice(limit-1).reduce((s,x)=>s+x[1],0); e=e.slice(0,limit-1).concat([["Övriga",rest]]); }
   return e;
 }
@@ -1743,7 +1744,7 @@ function statsView(){
     <div class="card"><div class="sec-h"><h3>Utgivningsdecennium</h3></div>${hbars(decEntries,base.length,"dec")}</div>
     <div class="card"><div class="sec-h"><h3>Genre</h3></div>${hbars(tally(base.flatMap(b=>genresOf(b).map(g=>({g}))),x=>x.g,10),base.length,"genre")}<p class="muted small">Från Goodreads Choice eller Open Library. En bok kan ha två genrer, och böcker utan uppgift räknas inte.</p></div>
     <div class="card"><div class="sec-h"><h3>Källa</h3></div>${hbars(tally(base,b=>b.source),base.length,"source")}</div>
-    <div class="card"><div class="sec-h"><h3>Mest lästa författare</h3></div>${hbars(tally(base,DIM.author,10),base.length,"author")}</div>
+    <div class="card"><div class="sec-h"><h3>Mest lästa författare</h3></div>${hbars(tally(base,DIM.author,10,true),base.length,"author")}</div>
     <div class="card"><div class="sec-h"><h3>Betyg</h3></div>${hbars([5,4,3,2,1].map(r=>[stars(r),base.filter(b=>b.rating&&Math.round(+b.rating)===r).length,String(r)]),base.length,"rating")}<p class="muted small">${base.filter(b=>!b.rating && String(b.read)>=RATING_FROM).length} lästa sedan 2026 utan betyg</p></div>
   </div>${recCard}${drill}`:`<div class="empty">Inga lästa böcker med datum ${scope==="year"?sel:""} i appen.</div>`}
   <p class="muted small">Böcker och sidor per månad kommer från fliken Statistik i arket fram till importen, och från läsdatumen i appen efter det. Noveller räknas från böckerna i appen (typ Novell). Sidorna räknas alltid fullt. Fördelningarna bygger på böckerna i appen som har ett läsdatum.</p>`;
