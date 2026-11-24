@@ -817,7 +817,7 @@ function filteredBooks(){
     else if(f.phase==="backlog"){ if(!isBacklog(b) || noMoreAuthor(b,AMall)) return false; }
     else if(f.phase==="tbr"){ if(phase(b)!=="tbr" || isUnreleased(b) || noMoreAuthor(b,AMall)) return false; }
     else if(f.phase && phase(b)!==f.phase) return false;
-    if(f.status && (b.status||"")!==f.status) return false;
+    if(f.status && ((b.status||"")!==f.status || ["read","dnf"].includes(phase(b)))) return false;
     if(f.kind && kindOf(b)!==f.kind) return false;
     if(f.ser==="in" && !seriesOf(b)) return false;
     if(f.ser==="noname" && !(b.num && !b.series && !seriesTabFor(b))) return false;
@@ -827,6 +827,7 @@ function filteredBooks(){
     return true;
   });
   const score=b=>(planT.has(norm(b.title))?100:0)+(serNext[norm(b.title)]?50:0)+(AVAILABLE.includes(b.status)?20:0)+(b.libby==="ja"?10:0)+((AMall[authorKey(b.author)]||3)-3)*10+(b.reread?5:0);
+  if(!sortOk(f.sort,f.phase)) f.sort=f.phase==="read"?"read":"plan";
   const by={plan:score, short:b=>-(+b.pages||9999), old:b=>"~"+String(b.added||"9"), added:b=>b.added||"",read:b=>b.read||b.started||"",title:b=>norm(b.title),author:b=>norm(b.author),pages:b=>+b.pages||0,year:b=>+b.year||0,rating:b=>+b.rating||0}[f.sort];
   const desc=["added","read","pages","year","rating","plan","short"].includes(f.sort);
   list.sort((a,b)=>{ const x=by(a),y=by(b); return (x<y?-1:x>y?1:0)*(desc?-1:1); });
@@ -851,7 +852,7 @@ function booksView(){
     <select id="fStatus" aria-label="Status"><option value="">Alla statusar</option>${STATUSES.filter(Boolean).map(s=>`<option ${f.status===s?"selected":""}>${esc(s)}</option>`).join("")}</select>
     <select id="fKind" aria-label="Typ"><option value="">Romaner och noveller</option><option value="bok" ${f.kind==="bok"?"selected":""}>Bara romaner</option><option value="novella" ${f.kind==="novella"?"selected":""}>Bara noveller</option></select>
     <select id="fSer" aria-label="Serie"><option value="">Med och utan serie</option><option value="in" ${f.ser==="in"?"selected":""}>Bara serieböcker</option><option value="none" ${f.ser==="none"?"selected":""}>Fristående</option></select>
-    <select id="fSort" aria-label="Sortering">${[["plan","Bäst förslag först"],["short","Kortast först"],["old","Längst på listan"],["added","Senast tillagd"],["read","Senast läst"],["title","Titel A–Ö"],["author","Författare A–Ö"],["rating","Betyg"],["pages","Flest sidor"],["year","Nyast utgiven"]].map(([v,l])=>`<option value="${v}" ${f.sort===v?"selected":""}>${l}</option>`).join("")}</select>
+    <select id="fSort" aria-label="Sortering">${[["plan","Bäst förslag först"],["short","Kortast först"],["old","Längst på listan"],["added","Senast tillagd"],["read","Senast läst"],["title","Titel A–Ö"],["author","Författare A–Ö"],["rating","Betyg"],["pages","Flest sidor"],["year","Nyast utgiven"]].filter(([v])=>sortOk(v,f.phase)).map(([v,l])=>`<option value="${v}" ${f.sort===v?"selected":""}>${l}</option>`).join("")}</select>
   </div>
   ${moreFilters(f)}
   <div id="results" style="display:flex;flex-direction:column;gap:16px">
@@ -861,6 +862,7 @@ function booksView(){
   </div>
 `;
 }
+function sortOk(v,ph){ const unread=["tbr","backlog","unreleased","reading"].includes(ph); if(unread && (v==="read"||v==="rating")) return false; if(ph==="read" && (v==="plan"||v==="old"||v==="short")) return false; return true; }
 function moreFilters(f){
   const langs=[...new Set(S.books.filter(b=>phase(b)!=="dnf").map(b=>langName(b.lang)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"sv"));
   const on=[f.avail,f.libby,f.nextSer,f.genre,f.lang,f.maxPages,f.gender].filter(Boolean).length;
@@ -1449,23 +1451,29 @@ const BACKLOG_ASK_ADDED_AFTER="2024-11-24";
 function listAge(b){ const a=String(b.added||""); if(!/^\d{4}-\d{2}-\d{2}$/.test(a)) return null; const s=new Date(a+"T12:00:00"), n=new Date();
   let m=(n.getFullYear()-s.getFullYear())*12+(n.getMonth()-s.getMonth()); if(n.getDate()<s.getDate()) m--; return m<0?null:m; }
 function ageText(m){ const y=Math.floor(m/12), mo=m%12; return [y?y+" år":"", mo?mo+" mån":""].filter(Boolean).join(" ")||"under en månad"; }
+// Ask at 2, 4 and 5 years on the list. At 5 years the only choices are: plan it or drop it.
+const BACKLOG_LEVELS=[2,4,5];
+function backlogLevel(b){ const m=listAge(b); if(m==null) return 0; let L=0; for(const y of BACKLOG_LEVELS){ if(m>=y*12 && addDaysISO(b.added, Math.round(y*365.25))>BACKLOG_ASK_ADDED_AFTER_CROSS) L=y; } return L; }
+const BACKLOG_ASK_ADDED_AFTER_CROSS="2026-11-24";
 function backlogAsk(){
   const t=todayISO(); const planned=new Set(Object.values(S.plans||{}).flat().map(i=>norm(i.title)));
-  return S.books.filter(b=>isBacklog(b) && String(b.added)>BACKLOG_ASK_ADDED_AFTER && !(b.keepUntil && b.keepUntil>t) && !planned.has(norm(b.title)) && !noMoreAuthor(b)).sort((a,b)=>String(a.added).localeCompare(String(b.added)));
+  return S.books.filter(b=>{ if(phase(b)!=="tbr"||isUnreleased(b)||noMoreAuthor(b)||planned.has(norm(b.title))) return false; const L=backlogLevel(b); if(!L || (+b.backlogAsked||0)>=L) return false; return !(L<5 && b.keepUntil && b.keepUntil>t); })
+    .sort((a,b)=>String(a.added).localeCompare(String(b.added)));
 }
 function backlogSection(){
   const l=backlogAsk(); if(!l.length) return "";
   const yrs=b=>Math.floor(-daysUntil(b.added)/365);
-  return `<div class="card"><div class="sec-h"><h3>Har legat på listan i över 2 år</h3><span class="muted small">${l.length}</span></div>
+  return `<div class="card"><div class="sec-h"><h3>Har legat länge på listan</h3><span class="muted small">${l.length}</span></div>
     <p class="muted small" style="margin-top:0">${l.length>10?"De 10 som legat längst visas. ":""}Vad vill du göra med dem?</p>
     ${l.slice(0,10).map(b=>`<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div class="row"><button type="button" class="alink grow" style="text-align:left" data-book="${esc(b.id)}">${esc(b.title)} <span class="muted small">${esc(b.author)} · ${yrs(b)} år, tillagd ${esc(fmtDate(b.added))}</span></button></div>
-      <div class="chips" style="margin-top:6px"><button class="chip" data-bl="soon" data-id="${esc(b.id)}">Läs snart</button><button class="chip" data-bl="keep" data-id="${esc(b.id)}">Behåll ett år till</button><button class="chip" data-bl="later" data-id="${esc(b.id)}">Fråga om 6 månader</button><button class="chip" data-bl="drop" data-id="${esc(b.id)}">Flytta från listan</button></div></div>`).join("")}</div>`;
+      <div class="chips" style="margin-top:6px"><button class="chip" data-bl="soon" data-id="${esc(b.id)}">Läs snart</button>${backlogLevel(b)<5?`<button class="chip" data-bl="keep" data-id="${esc(b.id)}">Behåll</button><button class="chip" data-bl="later" data-id="${esc(b.id)}">Fråga om 6 månader</button>`:""}<button class="chip" data-bl="drop" data-id="${esc(b.id)}">Flytta från listan</button></div>${backlogLevel(b)>=5?`<div class="small due-soon" style="margin-top:4px">5 år: planera den eller flytta den från listan.</div>`:""}</div>`).join("")}</div>`;
 }
 async function backlogAct(kind,id){
   const b=S.books.find(x=>x.id===id); if(!b) return;
-  if(kind==="soon"){ const d=new Date(); const k=yymm(new Date(d.getFullYear(), d.getMonth()+1, 1)); try{ await movePlan(b.title,k); toast(b.title+" ligger nu i planen för "+planLabel(k)+"."); }catch(_){} return; }
-  const patch = kind==="keep"?{keepUntil:addDaysISO(todayISO(),365)} : kind==="later"?{keepUntil:addDaysISO(todayISO(),182)} : {dropped:{date:todayISO(), reason:"Har legat för länge"}};
-  if(await batchUpdate({[id]:patch})){ if(kind==="drop"){ try{ await movePlan(b.title,""); }catch(_){} } toast(kind==="drop"?"Flyttad till Bortvalda.":kind==="keep"?"Frågar igen om ett år.":"Frågar igen om sex månader."); }
+  const L=backlogLevel(b);
+  if(kind==="soon"){ const d=new Date(); const k=yymm(new Date(d.getFullYear(), d.getMonth()+1, 1)); try{ await movePlan(b.title,k); await batchUpdate({[id]:{backlogAsked:L}}); toast(b.title+" ligger nu i planen för "+planLabel(k)+"."); }catch(_){} return; }
+  const patch = kind==="keep"?{backlogAsked:L} : kind==="later"?{keepUntil:addDaysISO(todayISO(),182)} : {dropped:{date:todayISO(), reason:"Har legat för länge"}};
+  if(await batchUpdate({[id]:patch})){ if(kind==="drop"){ try{ await movePlan(b.title,""); }catch(_){} } toast(kind==="drop"?"Flyttad till Bortvalda.":kind==="keep"?(L<4?"Frågar igen när den legat 4 år.":"Frågar igen när den legat 5 år."):"Frågar igen om sex månader."); }
 }
 function newBooksSection(){
   const l=newBookList(); if(!l.length) return "";
