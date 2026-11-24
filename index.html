@@ -371,6 +371,9 @@ async function maybeEnrich(){
     if(b.series){ const ps=parseSeriesField(b.series); if(ps.name!==b.series){ const patch={series:ps.name}; if(ps.num && !b.num) patch.num=ps.num; else if(b.num) patch.num=firstNum(b.num); put(b,patch); b.series=ps.name; if(patch.num) b.num=patch.num; } }
     if(b.num && String(b.num)!==firstNum(b.num)) put(b,{num:firstNum(b.num)});
     if(norm(b.source)==="colorado") put(b,{source:"Alamosa"});
+    // A comment that only says "EPUB": drop it when Format agrees (or is empty); conflicts go to Städa.
+    if(/^\s*epub\.?\s*$/i.test(b.comment||"")){ const f=String(b.format||"").trim().toUpperCase();
+      if(!f) put(b,{comment:"", format:"EPUB"}); else if(f==="EPUB") put(b,{comment:""}); }
     // Corrections Kitty has given by hand.
     if(/natt och dag/i.test(b.author||"") && /^179[345]$/.test(String(b.title).trim()) && !b.series) put(b,{series:"Bellman Noir Trilogy", num:String(+String(b.title).trim()-1792)});
     // Language codes -> names ("Chn" -> "Kinesiska"), whitespace, gender, odd dates.
@@ -1004,6 +1007,8 @@ function cleanIssues(){
   groups.push({key:"nopages", title:"Saknar sidantal", count:nopages.length, books:nopages});
   const nolang=S.books.filter(b=>!b.lang); groups.push({key:"nolang", title:"Saknar språk", count:nolang.length, books:nolang});
   const nogender=S.books.filter(b=>!b.gender); groups.push({key:"nogender", title:"Saknar författarens kön", count:nogender.length, books:nogender});
+  const epubClash=S.books.filter(b=>/^\s*epub\.?\s*$/i.test(b.comment||"") && b.format && String(b.format).trim().toUpperCase()!=="EPUB");
+  groups.push({key:"epub", title:"Kommentaren säger EPUB men Format säger något annat", count:epubClash.length, books:epubClash});
   const known=new Set(Object.values(LANGS).map(v=>v.toLowerCase()));
   const oddLang=S.books.filter(b=>[b.lang,b.origLang].some(v=>v && !known.has(String(v).toLowerCase())));
   groups.push({key:"oddlang", title:"Språk som appen inte känner igen", count:oddLang.length, books:oddLang});
@@ -1107,9 +1112,9 @@ function cleanView(){
       `<button class="btn primary" data-apply="${k}" style="margin-top:10px" ${on?"":"disabled"}>Godkänn ${on} förslag</button>`);
   }).join("");
   const bookList=(list,extra)=>list.length?list.slice(0,200).map(b=>`<div class="mini" data-book="${esc(b.id)}" role="button" tabindex="0">${coverHtml(b)}<div class="grow"><div class="t">${esc(b.title)}</div><div class="s">${authorLink(b.author)}${extra?" · "+extra(b):""}</div></div></div>`).join(""):`<p class="muted small">Inget att åtgärda.</p>`;
-  const info=g.filter(x=>["noname","nodue","nopages","oddlang","titles"].includes(x.key)).map(x=>{
+  const info=g.filter(x=>["epub","noname","nodue","nopages","oddlang","titles"].includes(x.key)).map(x=>{
     if(x.key==="titles") return sec(x.key,x.title,x.books.length, x.books.length?`<p class="muted small" style="margin-top:0">Engelska titlar skrevs om till engelsk stil. Ångra de som blev fel.</p>`+x.books.map(b=>`<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><div class="grow"><b>${esc(b.title)}</b><div class="muted small">var: ${esc(b.titleOrig)}</div></div><button class="btn small" data-undotitle="${esc(b.id)}">Ångra</button></div>`).join(""):`<p class="muted small">Inga.</p>`);
-    return sec(x.key,x.title,x.count, `<p class="muted small" style="margin-top:0">Här finns inget säkert förslag. Öppna boken och fyll i själv.</p>`+bookList(x.books, x.key==="noname"?(b=>"#"+esc(firstNum(b.num))):x.key==="oddlang"?(b=>esc([b.lang,b.origLang].filter(Boolean).join(" / "))):null));
+    return sec(x.key,x.title,x.count, `<p class="muted small" style="margin-top:0">Här finns inget säkert förslag. Öppna boken och fyll i själv.</p>`+bookList(x.books, x.key==="noname"?(b=>"#"+esc(firstNum(b.num))):x.key==="oddlang"?(b=>esc([b.lang,b.origLang].filter(Boolean).join(" / "))):x.key==="epub"?(b=>"Format: "+esc(b.format)):null));
   }).join("");
   return `<h2 style="font-size:22px">Städa</h2>
   ${P.length?`<div class="notice row"><span class="grow">Jag har gjort <b>${P.length} förslag</b> utifrån det som redan finns i din lista. Gå igenom dem, ta bort bocken på dem som är fel och godkänn resten. Dubbletter måste du välja själv.</span><button class="btn primary" data-apply="all" ${active.length?"":"disabled"}>Genomför ${active.length}</button></div>`:`<p class="muted">Inga förslag just nu.</p>`}
