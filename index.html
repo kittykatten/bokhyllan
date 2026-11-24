@@ -1697,16 +1697,19 @@ function statsView(){
     long:{t:"Längsta bok", ok:b=>+b.pages>0, v:b=>+b.pages, desc:true, f:b=>b.pages+" sidor"},
     short:{t:"Kortaste bok", ok:b=>+b.pages>0, v:b=>+b.pages, desc:false, f:b=>b.pages+" sidor"},
     listlong:{t:"Längst tid på listan", ok:listOk, v:b=>dd(b.added,b.read), desc:true, f:b=>ageText(Math.floor(dd(b.added,b.read)/30.44))+" ("+dd(b.added,b.read)+" d)"},
+    oldest:{t:"Längst resa i tiden", ok:b=>+b.year>0&&ISOd.test(b.read||""), v:b=>+b.read.slice(0,4)-+b.year, desc:true, f:b=>"utgiven "+b.year+", läst "+(+b.read.slice(0,4)-+b.year)+" år senare"},
     listshort:{t:"Kortast tid på listan", ok:listOk, v:b=>dd(b.added,b.read), desc:false, f:b=>dd(b.added,b.read)+" dagar"},
   };
   const recTop=k=>{ const r=REC[k]; return base.filter(r.ok).sort((a,b)=>(r.v(a)-r.v(b))*(r.desc?-1:1)); };
   // Best month and longest gap between finishing one book and starting the next.
-  const monthBest=(()=>{ let best=null; for(const [y,arr] of Object.entries(books)){ if(scope==="year"&&+y!==sel) continue; arr.forEach((v,m)=>{ if(v && (!best||v>best.v)) best={v,l:MON_SV_LONG[m]+" "+y}; }); } return best; })();
+  const bestOf=src=>{ let best=null; for(const [y,arr] of Object.entries(src)){ if(scope==="year"&&+y!==sel) continue; arr.forEach((v,m)=>{ if(v && (!best||v>best.v)) best={v,l:MON_SV_LONG[m]+" "+y}; }); } return best; };
+  const monthBest=bestOf(books), pagesBest=bestOf(pages);
   const gap=(()=>{ const r=base.filter(b=>ISOd.test(b.read||"")).sort((a,b)=>a.read.localeCompare(b.read)); let best=null;
     for(let i=1;i<r.length;i++){ const st=ISOd.test(r[i].started||"")?r[i].started:r[i].read; const g=dd(r[i-1].read,st); if(g>0&&(!best||g>best.g)) best={g,from:r[i-1],to:r[i]}; } return best; })();
   const recCard=`<div class="card"><div class="sec-h"><h3>Rekord</h3><span class="muted small">${scope==="year"?sel:"alla år"}</span></div>
     <div class="recs">${Object.entries(REC).map(([k,r])=>{ const top=recTop(k)[0]; return top?`<div class="rec" data-drill="rec|${k}" role="button" tabindex="0" title="Visa topplistan"><div class="muted small">${esc(r.t)}</div><div class="t">${esc(top.title)}</div><div class="small">${esc(r.f(top))}</div></div>`:""; }).join("")}
     ${monthBest?`<div class="rec"><div class="muted small">Flest böcker på en månad</div><div class="t">${monthBest.v} böcker</div><div class="small">${esc(monthBest.l)}</div></div>`:""}
+    ${pagesBest?`<div class="rec"><div class="muted small">Flest sidor på en månad</div><div class="t">${fmtN(pagesBest.v)} sidor</div><div class="small">${esc(pagesBest.l)}</div></div>`:""}
     ${gap?`<div class="rec"><div class="muted small">Längsta uppehåll</div><div class="t">${gap.g} dagar</div><div class="small">efter ${esc(gap.from.title)}, ${esc(fmtDate(gap.from.read))}</div></div>`:""}</div>
     <p class="muted small" style="margin-bottom:0">Klicka på ett rekord för att se topplistan. Läshastighet kräver startdatum, slutdatum och sidantal. Tid på listan räknas från Tillagd till Läst klart.</p></div>`;
   let drill="";
