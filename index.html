@@ -205,14 +205,14 @@ const MON_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov
 const MON_SV = ["jan","feb","mar","apr","maj","jun","jul","aug","sep","okt","nov","dec"];
 const MON_SV_LONG = ["januari","februari","mars","april","maj","juni","juli","augusti","september","oktober","november","december"];
 const STATUSES = ["","Ska lånas","Ska köpas","Köpt","Lånad","Lokal fil","Waitlist","On hold","Suspended","Kanske","Gav upp"];
-const DROP_REASONS=["Slutade läsa","Lockar inte längre","Inte min grej","Har legat för länge","Går inte att få tag på","Kanske senare"];
+const DROP_REASONS=["Gav upp","Lockar inte längre","Har legat för länge","Tillgänglighet"];
+const DROP_RENAME={"Slutade läsa":"Gav upp","Kanske senare":"Lockar inte längre","Inte min grej":"Lockar inte längre","Går inte att få tag på":"Tillgänglighet"};
 // Reason for books dropped before the app, read from the sheet's comment, status, months on list (MOL) and start date.
 function guessDropReason(b){
   const c=String(b.comment||"").toLowerCase();
-  if(/tillgänglighet|pris/.test(c)) return "Går inte att få tag på";
-  if(/feeling/.test(c)) return "Kanske senare";
-  if(/poesi|murderbot/.test(c)) return "Inte min grej";
-  if(/gav upp|läste \d|redan försökt/.test(c) || b.status==="Gav upp" || b.started) return "Slutade läsa";
+  if(/tillgänglighet|pris/.test(c)) return "Tillgänglighet";
+  if(/feeling|poesi|murderbot/.test(c)) return "Lockar inte längre";
+  if(/gav upp|läste \d|redan försökt/.test(c) || b.status==="Gav upp" || b.started) return "Gav upp";
   if(/månader på listan|legat/.test(c) || +b.mol>=48) return "Har legat för länge";
   if(/tappat intresset|räcker nu/.test(c)) return "Lockar inte längre";
   return "";
@@ -431,6 +431,7 @@ async function maybeEnrich(){
     // Corrections Kitty has given by hand.
     if(/^\s*audrain\.?\s*,?\s*a\.?\s*$/i.test(b.author||"")) put(b,{author:"Ashley Audrain", seriesTried:true, wdSeries:null});
     if(b.status==="Backlog") put(b,{status:""});
+    if(b.dropped && DROP_RENAME[b.dropped.reason]) put(b,{dropped:{...b.dropped, reason:DROP_RENAME[b.dropped.reason]}});
     if(phase(b)==="dnf" && !b.dropped && !b.droppedGuessed){ const fl=b.extra&&b.extra.Flyttad?parseDate(b.extra.Flyttad):""; put(b,{dropped:{date:/^\d{4}-\d{2}-\d{2}$/.test(fl)?fl:"", reason:guessDropReason(b)}, droppedGuessed:true}); }
     if(!b.libby && b.extra && b.extra.Bi){ const v=String(b.extra.Bi).trim().toLowerCase(); const m=v==="yes"?"ja":(v==="no"||v==="not")?"nej":v==="notify"?"notify":""; if(m) put(b,{libby:m}); }
     if(!b.series){ const nt=norm(b.title); for(const r of SERIES_RULES){ if(!r.a.test(b.author||"")) continue;
