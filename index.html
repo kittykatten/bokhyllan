@@ -570,10 +570,10 @@ async function maybeEnrich(){
   // Series facts from Goodreads links Kitty sent: standalones are not series; two books get their Goodreads series.
   const NOT_SERIES=[["Blind Faith","elton"],["The Edible Woman","atwood"],["Snuff","palahniuk"],["The Robber Bride","atwood"],["Home Before Dark","sager"],
     ["Invisible Monsters","palahniuk"],["My Best Friend's Exorcism","hendrix"],["Against a Dark Background","banks"]];
-  const GR_SERIES=[["A Canticle for Leibowitz","miller","St. Leibowitz","1"],["Do Androids Dream of Electric Sheep?","dick","Blade Runner","1"]];
+  const GR_SERIES=[["We Chase Shadows","osman","We Solve Murders","2",352],["We Solve Murders","osman","We Solve Murders","1"],["A Canticle for Leibowitz","miller","St. Leibowitz","1"],["Do Androids Dream of Electric Sheep?","dick","Blade Runner","1"]];
   for(const b of S.books){ const t=norm(String(b.title).split(":")[0]), a=norm(b.author);
     if(NOT_SERIES.some(([x,y])=>norm(x)===t && a.includes(y)) && !b.notSeries) put(b,{notSeries:true, wdSeries:null, ...(b.series?{series:"",num:""}:{})});
-    const gs=GR_SERIES.find(([x,y])=>norm(x)===t && a.includes(y)); if(gs && !b.series) put(b,{series:gs[2], num:gs[3], wdSeries:null}); }
+    const gs=GR_SERIES.find(([x,y])=>norm(x)===t && a.includes(y)); if(gs && !b.series) put(b,{series:gs[2], num:gs[3], wdSeries:null}); if(gs && gs[4] && !b.pages) put(b,{pages:gs[4], filled:{...(b.filled||{}), pages:"Goodreads"}}); }
   // Silo and The Handmaid's Tale: remove rows that are TV episodes/seasons (came in from Wikidata). Only these exact titles.
   const TV_ROWS=new Set(["A Dark Web", "A Woman's Place", "After", "Allegiance", "Baggage", "Ballet", "Barricades", "Birth Day", "Border", "Chicago", "Dear Offred", "Descent", "Devotion", "Execution", "Exile", "Exodus", "Fairytale", "Faithful", "Farewell", "First Blood", "Freedom Day", "God Bless the Child", "Gray Goo", "Hanna", "Heroic", "Holly", "Holston's Pick", "Home", "Household", "Into the Fire", "It's All Good", "Janine", "Jezebels", "June", "Late", "Liars", "Machines", "Mary and Martha", "Mayday", "Memory", "Milk", "Morning", "Motherland", "Night", "Nightshade", "No Man’s Land", "Nolite Te Bastardes Carborundorum", "Offred", "Order", "Other Women", "Outside", "Pigs", "Postpartum", "Progress", "Promotion", "Radio", "Sacrifice", "Safe", "Seeds", "Shattered", "Silo, season 1", "Silo, season 2", "Silo, season 3", "Smart Power", "Solo", "Surprise", "Testimony", "The Book of Quinn", "The Bridge", "The Crossing", "The Dive", "The Drive", "The Engineer", "The Flamekeepers", "The Getaway", "The Handmaid's Tale, season 1", "The Handmaid's Tale, season 2", "The Handmaid's Tale, season 3", "The Handmaid's Tale, season 4", "The Handmaid's Tale, season 5", "The Handmaid's Tale, season 6", "The Harmonium", "The Janitor's Boy", "The Last Ceremony", "The Other Side", "The Relic", "The Safeguard", "The Wilderness", "The Word", "Together", "Train", "Troy", "Truth", "Under His Eye", "Unfit", "Unknown Caller", "Unwomen", "Useful", "Vows", "Whatever You Do, Don't Go Home", "Who Are You?", "Witness", "Women's Work"].map(norm));
   for(const x of S.series){ const sn=norm(cleanSeriesName(x.series)).replace(/ /g,""); if(sn!=="silo" && sn!=="thehandmaidstale") continue;
@@ -1148,6 +1148,7 @@ const FIXED_SERIES=[
   {match:/^semiosis/, author:"burke", name:"Semiosis", author_full:"Sue Burke", books:[["1","Semiosis","2018",[]],["2","Interference","2019",[]],["3","Usurpation","2024",[]]]},
   {match:/handmaid|tjänarinnan/, author:"atwood", name:"The Handmaid's Tale", author_full:"Margaret Atwood", books:[["1","The Handmaid's Tale","1985",["Tjänarinnans berättelse"]],["2","The Testaments","2019",["Testamentena","Gileads döttrar"]]]},
   {match:/^silo|^wool/, author:"howey", name:"Silo", author_full:"Hugh Howey", books:[["1","Wool","2012",["Silo","Wool Omnibus"]],["2","Shift","2013",["Skift"]],["3","Dust","2013",["Stoft"]]]},
+  {match:/^we solve murders/, author:"osman", name:"We Solve Murders", author_full:"Richard Osman", books:[["1","We Solve Murders","2024",[]],["2","We Chase Shadows","2026",[]]]},
   {match:/^creep/, author:"hillier", name:"Creep", author_full:"Jennifer Hillier", books:[["1","Creep","2011",[]],["2","Freak","2012",[]]]},
   {match:/inheritance/, author:"jemisin", name:"The Inheritance Trilogy", author_full:"N. K. Jemisin", books:[["1","The Hundred Thousand Kingdoms","2010",[]],["2","The Broken Kingdoms","2010",[]],["3","The Kingdom of Gods","2011",[]]]},
   {match:/odyss/, author:"clarke", name:"Space Odyssey", author_full:"Arthur C. Clarke", books:[["1","2001: A Space Odyssey","1968",["2001 – En rymdodyssé","2001: En rymdodyssé","2001"]],
@@ -1253,13 +1254,15 @@ async function findDeadAuthors(){
 }
 async function findSeries(){
   if(seriesRun || !S.db || !S.loaded) return; seriesRun=true;
-  const need=b=>!seriesOf(b) && !b.notSeries && !b.seriesTried3 && ((!b.seriesTried2 && !b.wdSeries) || (b.seriesTried2 && b.wdSeries && !b.wdSeries.src)) && b.title && b.author && phase(b)!=="dnf";
+  const Yn=+todayISO().slice(0,4); const isNew=b=>(+b.year>=Yn-1) || isUnreleased(b);
+  const retry=b=>isNew(b) && !b.wdSeries && b.seriesTried3 && (Date.parse(todayISO())-Date.parse(typeof b.seriesTried3==="string"?b.seriesTried3:"2026-11-25"))/864e5>30;
+  const need=b=>!seriesOf(b) && !b.notSeries && (retry(b) || (!b.seriesTried3 && ((!b.seriesTried2 && !b.wdSeries) || (b.seriesTried2 && b.wdSeries && !b.wdSeries.src)))) && b.title && b.author && phase(b)!=="dnf";
   const all=S.books.filter(need); const todo=all.sort((a,b)=>(b.num?1:0)-(a.num?1:0)).slice(0,60);
   S.serProgress={left:all.length}; if(location.hash==="#stada") render();
   const patches={};
   for(const b of todo){
     let r=null; try{ r=await wikidataSeries(b); }catch(_){ break; }
-    patches[b.id]= r ? {wdSeries:r, seriesTried:true, seriesTried2:true, seriesTried3:true} : {wdSeries:null, seriesTried:true, seriesTried2:true, seriesTried3:true};
+    patches[b.id]= r ? {wdSeries:r, seriesTried:true, seriesTried2:true, seriesTried3:true} : {wdSeries:null, seriesTried:true, seriesTried2:true, seriesTried3:todayISO()};
     S.serProgress={left:Math.max(0,S.serProgress.left-1)};
     if(Object.keys(patches).length%15===0){ await batchUpdate(patches); for(const k in patches) delete patches[k]; }
     await new Promise(res=>setTimeout(res,1100));
@@ -1354,7 +1357,8 @@ async function findCovers(){
 let pagesRun=false;
 async function findPages(){
   if(pagesRun || !S.db || !S.loaded) return; pagesRun=true;
-  const todo=S.books.filter(b=>!b.pages && !b.pagesTried && b.title && phase(b)!=="dnf").slice(0,30);
+  const stale=v=>!v || v===true || (typeof v==="string" && (Date.parse(todayISO())-Date.parse(v))/864e5>30);   // true = tried before retries existed
+  const todo=S.books.filter(b=>!b.pages && stale(b.pagesTried) && b.title && phase(b)!=="dnf").slice(0,30);
   const patches={};
   for(const b of todo){
     let pages=0;
@@ -1364,7 +1368,13 @@ async function findPages(){
       const oh=(od.docs||[]).find(x=>x.number_of_pages_median && norm(x.title||"").startsWith(ct) && (x.author_name||[]).some(a=>norm(a).includes(norm(sur))));
       if(oh) pages=oh.number_of_pages_median;
     }catch(_){ break; }
-    patches[b.id]= pages ? {pages, pagesTried:true, filled:{...(b.filled||{}), pages:"Open Library"}} : {pagesTried:true};
+    let src="Open Library";
+    if(!pages){ try{   // Google Books (free, no key, from the browser): often has page counts for new books
+        const sa=splitAuthor(b.author); const sur=sa?sa.last:String(b.author||"").split(" ").pop(); const ct=norm(stripNovel(b.title).split(":")[0]);
+        const gd=await fetchJson("https://www.googleapis.com/books/v1/volumes?maxResults=5&printType=books&q="+encodeURIComponent('intitle:"'+b.title.split(":")[0]+'" inauthor:'+sur));
+        const gh=(gd.items||[]).map(x=>x.volumeInfo||{}).find(v=>+v.pageCount>40 && norm(v.title||"").startsWith(ct) && (v.authors||[]).some(a=>norm(a).includes(norm(sur))));
+        if(gh){ pages=+gh.pageCount; src="Google Books"; } }catch(_){} }
+    patches[b.id]= pages ? {pages, pagesTried:todayISO(), filled:{...(b.filled||{}), pages:src}} : {pagesTried:todayISO()};
     await new Promise(r=>setTimeout(r,700));
   }
   if(Object.keys(patches).length) await batchUpdate(patches);
