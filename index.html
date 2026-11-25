@@ -277,10 +277,19 @@ function parseDate(s){
   m = s.match(/^(\d{4})$/); if(m) return m[1]+"-01-01";
   return s;
 }
+// Exact dates exist from September 2023. Before that, the 1st means "sometime that month";
+// in 2015 and earlier only the year is known.
 function fmtDate(iso){
   if(!iso) return ""; const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if(!m) return iso; return (+m[3])+" "+MON_SV[+m[2]-1]+" "+m[1];
+  if(!m) return iso;
+  if(m[3]==="01" && iso<"2023-09-01"){ if(+m[1]<=2015) return m[1]; return MON_SV[+m[2]-1]+" "+m[1]; }
+  return (+m[3])+" "+MON_SV[+m[2]-1]+" "+m[1];
 }
+function parseLooseDate(v){ v=String(v||"").trim(); let m;
+  if((m=v.match(/^(\d{4})$/))) return m[1]+"-01-01";
+  if((m=v.match(/^(\d{4})-(\d{1,2})$/))) return m[1]+"-"+m[2].padStart(2,"0")+"-01";
+  if((m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) return m[1]+"-"+m[2].padStart(2,"0")+"-"+m[3].padStart(2,"0");
+  return ""; }
 function allReads(b){ return [...(b.reads||[]).map(r=>r&&r.read), b.read].filter(Boolean).sort(); }
 function everRead(b){ return allReads(b).length>0; }
 function phase(b){
@@ -1619,7 +1628,9 @@ function renderModal(){
     ${S.dropAsk&&phase(b)!=="dnf"?`<div class="card" style="padding:12px"><div class="small muted" style="margin-bottom:8px">Varför? Boken flyttas till Bortvalda och tas bort ur planen. Du kan alltid ångra.</div><div class="chips">${DROP_REASONS.map(r=>`<button class="chip" data-act="drop" data-reason="${esc(r)}">${esc(r)}</button>`).join("")}</div></div>`:""}
     ${phase(b)==="dnf"?`<div class="small muted">Bortvald${b.dropped&&b.dropped.date?" "+esc(fmtDate(b.dropped.date)):""}${b.dropped&&b.dropped.reason?" · "+esc(b.dropped.reason):""}</div>`:""}`:""}
     ${b.id&&seriesOf(b)?`<div class="small">Serie: ${seriesLink(seriesOf(b).name, seriesOf(b).name+(seriesOf(b).num?" "+numLabel(seriesOf(b).num):""))}</div>`:""}
-    ${(b.reads&&b.reads.length)||b.reread?`<div class="small muted">${b.reread&&!b.read?"<b>Läses om.</b> ":""}${(b.reads||[]).length?"Tidigare läst: "+(b.reads||[]).map(r=>esc(fmtDate(r.read))).join(", "):""}</div>`:""}
+    ${b.reread&&!b.read?`<div class="small muted"><b>Läses om.</b></div>`:""}
+    ${b.id?`<div class="small"><span class="muted">Tidigare läst:</span> ${(b.reads||[]).map((r,i)=>`<button type="button" class="chip" data-act="rmread" data-i="${i}" title="Ta bort den här läsningen">${esc(fmtDate(r.read))} ✕</button>`).join(" ")||`<span class="muted">–</span>`}
+      <div class="row" style="margin-top:6px;gap:6px"><input id="e_addread" placeholder="ÅÅÅÅ, ÅÅÅÅ-MM eller ÅÅÅÅ-MM-DD" style="max-width:240px" aria-label="Lägg till tidigare läsning"><button type="button" class="btn small" data-act="addread">+ Lägg till läsning</button></div></div>`:""}
     ${b.id?genreBlock(b):""}
     ${b.id&&showRating(b)?ratingBlock(b):""}
     ${b.id?"":`<div class="card" style="padding:12px;display:flex;flex-direction:column;gap:8px">
@@ -2342,6 +2353,12 @@ document.addEventListener("click", async e=>{
       case "new": openBook(null); return;
       case "authrename": renameAuthor(); return;
       case "authback": location.hash=(S.authorBack&&S.authorBack!=="#forfattare")?S.authorBack:"#bocker"; return;
+      case "addread": case "rmread": { const b=S.edit; if(!b||!b.id) return; let reads=(b.reads||[]).slice();
+        if(d.act==="addread"){ const v=parseLooseDate(($("#e_addread")||{}).value); if(!v){ toast("Skriv året, ÅÅÅÅ-MM eller ÅÅÅÅ-MM-DD."); return; }
+          if(reads.some(r=>r.read===v) || b.read===v){ toast("Den läsningen finns redan."); return; } reads.push({started:"", read:v}); }
+        else reads.splice(+d.i,1);
+        reads.sort((x,y)=>String(x.read).localeCompare(String(y.read)));
+        if(await batchUpdate({[b.id]:{reads}})){ b.reads=reads; renderModal(); toast(d.act==="addread"?"Läsningen är tillagd.":"Läsningen är borttagen."); } return; }
       case "editmeta": { readForm(); S.editMeta=!S.editMeta; renderModal(); return; }
       case "useseries": { readForm(); const sr=seriesOf(S.edit); if(sr){ S.edit.series=sr.name; if(!S.edit.num && sr.num) S.edit.num=sr.num; } renderModal(); return; }
       case "usesugg": { readForm(); const sg=genreSuggest(S.edit); if(sg) S.edit.genres=sg.list.slice(); renderModal(); return; }
