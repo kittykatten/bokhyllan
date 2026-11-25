@@ -381,6 +381,50 @@ function listEstimate(){
   const end=new Date(d.getFullYear(), d.getMonth()+months, 1);
   return {n:left.length, pages, end:MON_SV_LONG[end.getMonth()]+" "+end.getFullYear(), text:"≈ "+[y?y+" år":"", m?m+" mån":""].filter(Boolean).join(" "), how:`${fmtN(pages)} sidor kvar (${left.length-known.length} böcker utan sidantal räknas som ${Math.round(avg)} sidor) delat med ${fmtN(Math.round(p12/12))} sidor per månad, som är ditt snitt de senaste 12 hela månaderna.`};
 }
+// The list as it was on a given day, and the estimate made from it (same method as listEstimate, pace = the 12 months before).
+function listAt(dISO){
+  return S.books.filter(b=>{
+    const dr=b.dropped&&b.dropped.date;
+    if(phase(b)==="dnf" && !dr) return false;              // removed long ago, date unknown
+    if(dr && dr<=dISO) return false;
+    const a=String(b.added||""); if(/^\d{4}-\d{2}-\d{2}$/.test(a) && a>dISO) return false;
+    const reads=allReads(b); if(reads.some(x=>x<=dISO) && !(b.reread && !b.read && dISO>=todayISO())) return false;   // "läsa om" counts as on the list now
+    const rel=relDate(b); if(rel && rel>dISO) return false;
+    return true; });
+}
+function estimateAt(dISO){
+  const left=listAt(dISO); if(!left.length) return null;
+  const known=left.filter(b=>+b.pages>0); const avg=known.length?known.reduce((s,b)=>s+ +b.pages,0)/known.length:350;
+  const pages=Math.round(left.reduce((s,b)=>s+(+b.pages>0?+b.pages:avg),0));
+  const {pages:pm}=monthCounts(); const d=new Date(dISO+"T12:00:00"); let p12=0;
+  for(let i=1;i<=12;i++){ const x=new Date(d.getFullYear(), d.getMonth()-i, 1); p12+=((pm[x.getFullYear()]||[])[x.getMonth()]||0); }
+  if(!p12) return {n:left.length, pages, months:null, end:null};
+  const months=Math.round(pages/(p12/12)); const end=new Date(d.getFullYear(), d.getMonth()+months, 1);
+  return {n:left.length, pages, months, end};
+}
+function listYearCard(sel){
+  const today=todayISO(); const Y=+today.slice(0,4); if(sel>Y) return "";
+  const from=sel+"-01-01", to=sel===Y?today:sel+"-12-31"; const inY=d=>d && d>=from && d<=to;
+  const added=S.books.filter(b=>inY(String(b.added||"")) && !(phase(b)==="dnf" && !(b.dropped&&b.dropped.date)));
+  const read=S.books.filter(b=>allReads(b).some(inY));
+  const removed=S.books.filter(b=>b.dropped && inY(b.dropped.date));
+  const a=estimateAt(sel+"-01-01"), z=estimateAt(to);
+  const endTxt=e=>e&&e.end?MON_SV_LONG[e.end.getMonth()]+" "+e.end.getFullYear():"–";
+  let shift="";
+  if(a&&z&&a.end&&z.end){ const dm=(z.end.getFullYear()-a.end.getFullYear())*12+(z.end.getMonth()-a.end.getMonth());
+    shift=dm===0?"oförändrat":dm<0?`${ageText(-dm)} tidigare`:`${ageText(dm)} senare`; }
+  const net=z&&a?z.n-a.n:null;
+  const tile=(v,l,extra="")=>`<div class="tile"><div class="v">${v}</div><div class="l">${l}</div>${extra}</div>`;
+  return `<div class="card"><div class="sec-h"><h3>Listan ${sel}</h3><span class="muted small">${sel===Y?"hittills i år":"hela året"}</span></div>
+    <div class="tiles">
+      ${tile("+"+fmtN(added.length),"tillagda")}
+      ${tile(fmtN(read.length),"lästa")}
+      ${tile(fmtN(removed.length),"borttagna","<div class=\"delta\">flyttade till Bortvalda</div>")}
+      ${a&&z?tile(`${fmtN(a.n)} → ${fmtN(z.n)}`,"böcker på listan",`<div class="delta">${net>0?"▲ +":net<0?"▼ −":"± "}${fmtN(Math.abs(net))} ${sel===Y?"sedan nyår":"under året"}</div>`):""}
+      ${a&&z&&a.end&&z.end?tile(`<span style="font-size:20px">${esc(endTxt(a))} → ${esc(endTxt(z))}</span>`,"beräknat slutdatum",`<div class="delta">${esc(shift)}</div>`):""}
+    </div>
+    <p class="muted small" style="margin-bottom:0">Listan räknas fram ur datumen på böckerna: Tillagd, Läst klart och när de flyttades till Bortvalda. Böcker som togs bort innan appen sparade datum räknas inte. Slutdatumet beräknas som på Hem: sidor kvar delat med din takt de tolv månaderna före.</p></div>`;
+}
 // Author preference: your direct answer (Inkorg) first, then the latest rating-form answer from Nov 2026 on overrides it. 10+ read = yes.
 const PREF_VAL={ja:5,kanske:3,nej:1};
 // "avliden": no new books will come. Not a score, so it never triggers questions about books left on the list.
@@ -2018,6 +2062,7 @@ function statsView(){
     <div class="tile"><div class="v">${((yBooks-yNov)/monthsGone).toLocaleString("sv-SE",{maximumFractionDigits:1})}</div><div class="l">${yNov?"romaner":"böcker"} per månad</div></div>
     <div class="tile${rated.length?" click":""}" ${rated.length?`data-drill="rated|" role="button" tabindex="0" title="Visa alla betygsatta böcker ${sel}, rankade"`:""}><div class="v">${avg?avg.toLocaleString("sv-SE",{maximumFractionDigits:1}):"–"}</div><div class="l">snittbetyg ${sel} (${rated.length} betygsatta)</div></div>
   </div>
+  ${listYearCard(sel)}
   <div class="card"><div class="sec-h"><h3>Lästa böcker per månad ${sel}</h3></div>${sel<2016?`<p class="muted small" style="margin-top:0">För ${sel} finns bara året loggat, så fördelningen över månader stämmer inte.</p>`:sel<2023?`<p class="muted small" style="margin-top:0">För ${sel} finns månad men inte exakt datum.</p>`:sel===2023?`<p class="muted small" style="margin-top:0">Exakta läsdatum från september 2023, månad innan dess.</p>`:""}
     ${vbars(MON_SV.map((l,i)=>({l,v:(books[sel]||[])[i]||0,n:(nov[sel]||[])[i]||0,title:MON_SV_LONG[i]+" "+sel,now:sel===Y&&i===now.getMonth()})),{label:"Böcker per månad "+sel})}${legend}</div>
   <div class="grid2">
