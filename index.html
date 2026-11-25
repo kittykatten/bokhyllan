@@ -367,7 +367,8 @@ function listEstimate(){
   for(let i=1;i<=12;i++){ const x=new Date(d.getFullYear(), d.getMonth()-i, 1); p12+=((pm[x.getFullYear()]||[])[x.getMonth()]||0); }
   if(!p12) return null;
   const months=Math.round(pages/(p12/12)); const y=Math.floor(months/12), m=months%12;
-  return {n:left.length, pages, text:"≈ "+[y?y+" år":"", m?m+" mån":""].filter(Boolean).join(" "), how:`${fmtN(pages)} sidor kvar (${left.length-known.length} böcker utan sidantal räknas som ${Math.round(avg)} sidor) delat med ${fmtN(Math.round(p12/12))} sidor per månad, som är ditt snitt de senaste 12 hela månaderna.`};
+  const end=new Date(d.getFullYear(), d.getMonth()+months, 1);
+  return {n:left.length, pages, end:MON_SV_LONG[end.getMonth()]+" "+end.getFullYear(), text:"≈ "+[y?y+" år":"", m?m+" mån":""].filter(Boolean).join(" "), how:`${fmtN(pages)} sidor kvar (${left.length-known.length} böcker utan sidantal räknas som ${Math.round(avg)} sidor) delat med ${fmtN(Math.round(p12/12))} sidor per månad, som är ditt snitt de senaste 12 hela månaderna.`};
 }
 // Author preference: your direct answer (Inkorg) first, then the latest rating-form answer from Nov 2026 on overrides it. 10+ read = yes.
 const PREF_VAL={ja:5,kanske:3,nej:1};
@@ -1013,14 +1014,24 @@ async function wikidataSeries(b){
   if(!sur) return null;
   const lang=langName(b.lang)==="Svenska"?"sv":"en";
   const t=b.title.split(":")[0].replace(/["\\]/g,"").trim();
-  const q=`SELECT ?sLabel ?ord WHERE {
+  const q=`SELECT ?b ?sLabel ?ord ?prev ?next WHERE {
     SERVICE wikibase:mwapi { bd:serviceParam wikibase:endpoint "www.wikidata.org"; wikibase:api "EntitySearch"; mwapi:search "${t}"; mwapi:language "${lang}". ?b wikibase:apiOutputItem mwapi:item. }
     ?b wdt:P50 ?a. ?a rdfs:label ?al. FILTER(CONTAINS(LCASE(STR(?al)), "${sur}"))
-    ?b p:P179 ?st. ?st ps:P179 ?s. OPTIONAL { ?st pq:P1545 ?ord }
-    SERVICE wikibase:label { bd:serviceParam wikibase:language "${lang},en". } } LIMIT 3`;
+    OPTIONAL { ?b p:P179 ?st. ?st ps:P179 ?s. OPTIONAL { ?st pq:P1545 ?ord } }
+    OPTIONAL { ?b wdt:P155 ?prev } OPTIONAL { ?b wdt:P156 ?next }
+    SERVICE wikibase:label { bd:serviceParam wikibase:language "${lang},en". } } LIMIT 5`;
   const d=await fetchJson("https://query.wikidata.org/sparql?format=json&query="+encodeURIComponent(q));
-  const r=(d.results&&d.results.bindings||[]).find(x=>x.sLabel && !/^Q\d+$/.test(x.sLabel.value));
-  return r?{name:r.sLabel.value, num:r.ord?r.ord.value:""}:null;
+  const rows=(d.results&&d.results.bindings||[]);
+  const r=rows.find(x=>x.sLabel && !/^Q\d+$/.test(x.sLabel.value));
+  if(r) return {name:r.sLabel.value, num:r.ord?r.ord.value:""};
+  // No series item: a book with "follows"/"followed by" is part of a series named after its first book (e.g. Semiosis).
+  const c=rows.find(x=>x.prev||x.next); if(!c) return null;
+  const qid=c.b.value.split("/").pop();
+  const q2=`SELECT ?first ?fl ?fe (COUNT(DISTINCT ?mid) AS ?pos) WHERE { wd:${qid} wdt:P155* ?mid . ?mid wdt:P155* ?first . FILTER NOT EXISTS { ?first wdt:P155 ?x }
+    OPTIONAL { ?first rdfs:label ?fl FILTER(LANG(?fl)="${lang}") } OPTIONAL { ?first rdfs:label ?fe FILTER(LANG(?fe)="en") } } GROUP BY ?first ?fl ?fe LIMIT 1`;
+  const d2=await fetchJson("https://query.wikidata.org/sparql?format=json&query="+encodeURIComponent(q2));
+  const f=(d2.results&&d2.results.bindings||[])[0]; const nm=f&&((f.fl&&f.fl.value)||(f.fe&&f.fe.value)); if(!nm) return null;
+  return {name:nm.split(":")[0].trim(), num:f.pos?f.pos.value:""};
 }
 let seriesRun=false;
 // Names written "Efternamn I" (e.g. "Power R", "Power, R."): look up the book's title on Open Library and use the full name
@@ -1077,16 +1088,65 @@ async function findDeadAuthors(){
 }
 async function findSeries(){
   if(seriesRun || !S.db || !S.loaded) return; seriesRun=true;
-  const need=b=>!seriesOf(b) && !b.seriesTried && b.title && b.author && phase(b)!=="dnf";
-  const todo=S.books.filter(need).sort((a,b)=>(b.num?1:0)-(a.num?1:0)).slice(0,30);
+  const need=b=>!seriesOf(b) && !b.seriesTried2 && !b.wdSeries && b.title && b.author && phase(b)!=="dnf";
+  const todo=S.books.filter(need).sort((a,b)=>(b.num?1:0)-(a.num?1:0)).slice(0,60);
   const patches={};
   for(const b of todo){
     let r=null; try{ r=await wikidataSeries(b); }catch(_){ break; }
-    patches[b.id]= r ? {wdSeries:r, seriesTried:true} : {seriesTried:true};
+    patches[b.id]= r ? {wdSeries:r, seriesTried:true, seriesTried2:true} : {seriesTried:true, seriesTried2:true};
     await new Promise(res=>setTimeout(res,1100));
   }
   if(Object.keys(patches).length) await batchUpdate(patches);
   seriesRun=false;
+  setTimeout(findSeriesGaps, 2000);
+}
+// Books missing in your series: members of the same series in Wikidata (by series name, or the follows/followed-by chain
+// from a first book with that name). Also "Titel inte känd än" when Wikidata says the series has more parts than are known.
+// Found gaps are saved in cleanState.serGaps and shown in the Inkorg for approval. Each series is checked again after 30 days.
+let gapRun=false;
+async function findSeriesGaps(){
+  if(gapRun || !S.db || !S.loaded || S.isOwner===false) return; gapRun=true;
+  const cs=S.docs.cleanState||{}; const chk=cs.serChecked||{}; const today=todayISO();
+  const old=d=>!d || (Date.parse(today)-Date.parse(d))/864e5>30;
+  const groups=seriesGroups().filter(g=>!isAbandoned(g.name) && old(chk[g.name.toLowerCase()])).slice(0,24);
+  const checked={}, gaps={};
+  for(let i=0;i<groups.length;i+=6){
+    const part=groups.slice(i,i+6);
+    const vals=part.flatMap(g=>["en","sv","mul"].map(l=>JSON.stringify(g.name)+"@"+l)).join(" ");
+    const q=`SELECT ?name ?m ?ord ?date ?parts ?te ?ts ?al WHERE { VALUES ?name { ${vals} }
+      { ?s rdfs:label ?name . ?st ps:P179 ?s . ?m p:P179 ?st . OPTIONAL { ?st pq:P1545 ?ord } OPTIONAL { ?s wdt:P1114 ?parts } }
+      UNION { ?first rdfs:label ?name . ?first wdt:P156 ?n2 . FILTER NOT EXISTS { ?first wdt:P155 ?x } ?first wdt:P156* ?m . }
+      OPTIONAL { ?m wdt:P577 ?date } OPTIONAL { ?m rdfs:label ?te FILTER(LANG(?te)="en") } OPTIONAL { ?m rdfs:label ?ts FILTER(LANG(?ts)="sv") }
+      OPTIONAL { ?m wdt:P50 ?a . ?a rdfs:label ?al FILTER(LANG(?al)="en") } }`;
+    let d; try{ d=await fetchJson("https://query.wikidata.org/sparql?format=json&query="+encodeURIComponent(q)); }catch(_){ break; }
+    const rows=d.results.bindings||[];
+    for(const g of part){
+      checked[g.name.toLowerCase()]=today;
+      const surs=new Set(g.items.map(it=>{ const sa=splitAuthor(String(it.author||"")); return sa?norm(sa.last).split(" ").pop():""; }).filter(Boolean));
+      const mine=rows.filter(r=>norm(r.name.value)===norm(g.name) && (!r.al || !surs.size || [...surs].some(x=>norm(r.al.value).includes(x))));
+      if(!mine.length) continue;
+      const mem={}; let parts=0;
+      mine.forEach(r=>{ const k=r.m.value; const e=(mem[k] ||= {}); if(r.ord) e.num=firstNum(r.ord.value); if(r.date) e.date=(e.date&&e.date<r.date.value)?e.date:r.date.value;
+        if(r.te) e.te=r.te.value; if(r.ts) e.ts=r.ts.value; if(r.parts) parts=Math.max(parts,+r.parts.value||0); });
+      let list=Object.values(mem).filter(e=>e.te||e.ts);
+      if(list.some(e=>!e.num)){ list.sort((a,b)=>String(a.date||"9").localeCompare(String(b.date||"9"))); list.forEach((e,ix)=>{ if(!e.num) e.num=String(ix+1); }); }
+      const haveT=new Set(g.items.flatMap(it=>[norm(it.title), norm(String(it.title).split(":")[0])]));
+      const haveN=new Set(g.items.map(it=>String(it.num||"")).filter(Boolean));
+      const author=g.author.split(",")[0]||"";
+      list.forEach(e=>{ const titles=[e.te,e.ts].filter(Boolean); if(titles.some(t=>haveT.has(norm(t))||haveT.has(norm(t.split(":")[0]))) || haveN.has(e.num)) return;
+        const lang=g.items.find(it=>it.lang)?.lang||""; const t=(langName(lang)==="Svenska"&&e.ts)||e.te||e.ts;
+        gaps[g.name+"|"+e.num+"|"+norm(t)]={series:g.name, title:t, author, num:e.num, year:e.date?e.date.slice(0,4):"", release:e.date&&e.date.slice(0,10)>today?e.date.slice(0,10):"", lang}; });
+      const maxN=Math.max(0,...g.items.map(it=>+firstNum(it.num)||0),...list.map(e=>+e.num||0));
+      for(let n=maxN+1;n<=parts && n<=maxN+3;n++) gaps[g.name+"|"+n+"|?"]={series:g.name, title:"?", author, num:String(n), year:"", release:"", lang:""};
+    }
+    await new Promise(r=>setTimeout(r,1100));
+  }
+  if(Object.keys(checked).length){
+    const upd={serChecked:checked}; if(Object.keys(gaps).length) upd.serGaps=gaps;
+    try{ await queued("cleanState",()=>S.db.doc("lib/cleanState").update(upd)); cleanProposals._r=null;
+      const n=Object.keys(gaps).length; if(n){ render(); toast(n+(n===1?" bok":" böcker")+" saknas i dina serier. Se Inkorgen."); } }catch(_){}
+  }
+  gapRun=false;
 }
 // Find covers for books that have none, quietly in the background, a few at a time.
 let coverRun=false;
@@ -1170,7 +1230,7 @@ function homeView(){
     <div class="tile"><div class="v">${yb}</div><div class="l">böcker lästa ${Y}${yn?` · ${yb-yn} romaner, ${yn} ${yn===1?"novell":"noveller"}`:""}</div>${delta(yb,lb)}</div>
     <div class="tile"><div class="v">${fmtN(yp)}</div><div class="l">sidor ${Y}</div>${delta(yp,lp)}</div>
     <div class="tile"><div class="v">${planRead} / ${plan.length}</div><div class="l">av ${MON_SV_LONG[M]}s plan lästa</div></div>
-    ${(()=>{ const e=listEstimate(); return e?`<div class="tile" title="${esc(e.how)}"><div class="v">${esc(e.text)}</div><div class="l">att läsa hela listan i din takt · ${e.n} böcker, ${fmtN(e.pages)} sidor</div></div>`:""; })()}
+    ${(()=>{ const e=listEstimate(); return e?`<div class="tile" title="${esc(e.how)}"><div class="v">${esc(e.text)}</div><div class="l">att läsa hela listan i din takt · ${e.n} böcker, ${fmtN(e.pages)} sidor<div class="l">klart ungefär <b>${esc(e.end)}</b></div></div></div>`:""; })()}
   </div>
   ${(()=>{ const ISO=/^\d{4}-\d{2}-\d{2}$/; const soon=S.books.filter(b=>phase(b)==="tbr").map(b=>{ const hasR=ISO.test(b.release||""); const r=hasR?b.release:""; return r?{b,r,d:daysUntil(r),min:-7}:null; }).filter(x=>x && x.d<=7 && x.d>=x.min).sort((x,y)=>x.d-y.d);
     return soon.map(({b,d,r})=>`<div class="notice row" data-book="${esc(b.id)}" role="button" tabindex="0" style="cursor:pointer">${d<=0?"🎉":"⏳"} <span class="grow"><b>${esc(b.title)}</b> av ${esc(b.author)}: ${d>0?(d===1?"släpps imorgon":"släpps om "+d+" dagar"):d===0?"släpps idag!":"har släppts ("+esc(fmtDate(r))+")"}</span></div>`).join(""); })()}
@@ -1337,6 +1397,11 @@ function cleanProposals(){
   Object.values(nameGroups).forEach((g,i)=>{ const patches={}; g.ids.forEach(id=>patches[id]={author:g.to}); out.push({id:"nm"+i, key:"p:nm:"+g.from+"→"+g.to, group:"names", title:g.to, detail:"ersätter “"+g.from+"” · "+g.ids.length+(g.ids.length>1?" böcker":" bok"), patches}); });
   S.books.filter(b=>b.wdSeries && !seriesOf(b)).forEach(b=>{ const w=b.wdSeries; const nm=fixSeriesName(w.name,b.lang);
     out.push({id:"wd"+b.id, key:"p:wd:"+b.id, group:"wdseries", title:b.title, detail:`${nm}${(b.num||w.num)?" #"+firstNum(b.num||w.num):""} (Wikidata)`, patches:{[b.id]:{series:nm, num:firstNum(b.num||w.num||"")}}, bookId:b.id}); });
+  { const SG=(S.docs.cleanState&&S.docs.cleanState.serGaps)||{}; const grp={}; seriesGroups().forEach(g=>grp[g.name.toLowerCase()]=g);
+    Object.entries(SG).forEach(([k,x])=>{ if(!x) return; const g=grp[String(x.series).toLowerCase()]; if(g && x.title!=="?" && g.items.some(it=>norm(it.title)===norm(x.title))) return;
+      if(g && x.title==="?" && g.items.some(it=>String(it.num)===String(x.num))) return;
+      out.push({id:"sg:"+k, key:"p:sg:"+k, group:"sermissing", title:x.title==="?"?`${x.series} #${x.num}`:x.title,
+        detail:x.title==="?"?"Titel inte känd än (Wikidata)":`${x.series} #${x.num}${x.release?" · släpps "+fmtDate(x.release):x.year?" · "+x.year:""} · ${x.author} (Wikidata)`, patches:{}, adds:[x]}); }); }
   const byA={}; S.books.forEach(b=>{ (byA[authorKey(b.author)] ||= []).push(b); });
   S.books.filter(b=>!b.gender).forEach(b=>{ const v=[...new Set((byA[authorKey(b.author)]||[]).map(x=>x.gender).filter(Boolean))];
     if(v.length===1) out.push({id:"ge"+b.id, key:"p:ge:"+b.id, group:"gender", title:b.title, detail:`${GENDER[v[0]]||v[0]}, som dina andra böcker av ${b.author}`, patches:{[b.id]:{gender:v[0]}}, bookId:b.id}); });
@@ -1351,7 +1416,7 @@ async function cleanIgnore(keys){
   S.cleanIgnore={...(S.cleanIgnore||{}), ...add}; cleanIssues._r=null; cleanProposals._r=null; render();
   toast(keys.length>1?keys.length+" borttagna från Inkorgen.":"Borttaget från Inkorgen.");
 }
-async function applyProposals(which){
+async function applyProposals(which, alsoTbr){
   const skip=S.cleanSkip||new Set();
   const ch=S.dupChoice||{};
   const list=cleanProposals().filter(p=>(p.group==="dups"?!!ch[p.id]:!skip.has(p.id)) && (which==="all"||p.group===which));
@@ -1364,12 +1429,24 @@ async function applyProposals(which){
     for(const [id,pt] of Object.entries(p.patches)){ if(pt===null || patches[id]===null) patches[id]=null; else patches[id]={...(patches[id]||{}), ...pt}; }
     }
   if(Object.keys(ignore).length){ try{ const cur={...(S.ignoreDups||{}), ...ignore}; await queued("cleanState",()=>S.db.doc("lib/cleanState").update({ignoreDups:cur})); }catch(e){ dbFail(e); return; } }
+  const adds=list.flatMap(p=>p.adds||[]);
+  if(adds.length){
+    try{ for(const x of adds){
+        await putItem("series", uid("s"), {title:x.title, author:x.author, series:x.series, num:x.num, year:x.year||"", pages:"", lang:x.lang||"", inList:false, read:false, comment:x.release?"Släpps "+x.release:""});
+        if(alsoTbr && x.title!=="?" && !findBook(x.title)){ const like=S.books.find(b=>authorKey(b.author)===authorKey(x.author));
+          await putItem("books", uid("b"), {kind:"bok", title:x.title, author:x.author, gender:(like&&like.gender)||"", lang:x.lang||"", origLang:"", status:"", source:"", format:"", started:"", read:"", due:"", comment:"",
+            year:x.year?+x.year:"", pages:"", series:x.series, num:x.num, rating:0, extra:{}, genres:(like&&like.genres)||[], ratingForm:{}, moreAuthor:0, added:todayISO(), release:x.release||"", ownPick:true}); } }
+      await queued("cleanState",()=>S.db.doc("lib/cleanState").update({ignore:Object.fromEntries(list.filter(p=>p.adds).map(p=>[p.key,true]))}));
+      S.cleanIgnore={...(S.cleanIgnore||{}), ...Object.fromEntries(list.filter(p=>p.adds).map(p=>[p.key,true]))}; cleanProposals._r=null;
+    }catch(e){ dbFail(e); return; }
+    if(!Object.keys(patches).length){ toast(adds.length+(adds.length===1?" bok tillagd":" böcker tillagda")+" i Serier"+(alsoTbr?" och bland Att läsa.":".")); render(); return; }
+  }
   if(!Object.keys(patches).length && !Object.keys(ignore).length){ toast("Inget att godkänna."); return; }
   if(!Object.keys(patches).length || await batchUpdate(patches)){ S.dupChoice={}; toast(list.length+" ändringar genomförda."); }
 }
 function cleanView(){
   const P=cleanProposals(); const skip=S.cleanSkip||new Set(); const g=cleanIssues(); const open=S.cleanOpen;
-  const GT={wdseries:"Serier från Wikidata", names:"Författarnamn till Förnamn Efternamn", authors:"Samma författare skriven på olika sätt", dups:"Dubbletter och omläsningar", gender:"Författarens kön saknas", lang:"Språk saknas"};
+  const GT={sermissing:"Böcker som saknas i dina serier", wdseries:"Serier från Wikidata", names:"Författarnamn till Förnamn Efternamn", authors:"Samma författare skriven på olika sätt", dups:"Dubbletter och omläsningar", gender:"Författarens kön saknas", lang:"Språk saknas"};
   const ch=S.dupChoice||{};
   const active=P.filter(p=>p.group==="dups"?!!ch[p.id]:!skip.has(p.id));
   const recLine=b=>{ const p=phase(b); const where=b.kind==="novella"?"från Novella-fliken":b.kind==="removed"?"från Removed-fliken":"";
@@ -1393,7 +1470,7 @@ function cleanView(){
     return sec(k,t,list.length, list.map(p=>`<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line);align-items:flex-start;${skip.has(p.id)?"opacity:.5":""}">
       <button class="chip" data-skip="${p.id}" aria-pressed="${!skip.has(p.id)}" title="Ta med eller hoppa över">${skip.has(p.id)?"Hoppas över":"✓ Med"}</button>
       <div class="grow"><b>${p.bookId?`<button type="button" class="alink" data-book="${esc(p.bookId)}">${esc(p.title)}</button>`:esc(p.title)}</b><div class="muted small">${esc(p.detail)}</div></div>${p.key?`<button class="chip" data-ignore="${esc(p.key)}" title="Ta bort förslaget för gott">✕ Nej tack</button>`:""}</div>`).join("")+
-      `<button class="btn primary" data-apply="${k}" style="margin-top:10px" ${on?"":"disabled"}>Godkänn ${on} förslag</button>`);
+      `<button class="btn primary" data-apply="${k}" style="margin-top:10px" ${on?"":"disabled"}>Godkänn ${on} förslag</button>`+(k==="sermissing"?` <button class="btn" data-apply="${k}" data-tbr="1" style="margin-top:10px" ${on?"":"disabled"}>Godkänn och lägg titlarna bland Att läsa</button>`:""));
   }).join("");
   const bookList=(list,extra,gk)=>list.length?list.slice(0,200).map(b=>`<div class="mini" data-book="${esc(b.id)}" role="button" tabindex="0">${coverHtml(b)}<div class="grow"><div class="t">${esc(b.title)}</div><div class="s">${authorLink(b.author)}${extra?" · "+extra(b):""}</div></div>${gk?`<button class="chip" data-ignore="${esc("i:"+gk+":"+b.id)}" title="Visa inte här igen">✕</button>`:""}</div>`).join("")+(gk&&list.length>1?`<button class="btn small" data-ignore="${esc(list.map(b=>"i:"+gk+":"+b.id).join("\n"))}" style="margin-top:10px">Ta bort alla ${list.length} härifrån</button>`:""):`<p class="muted small">Inget att åtgärda.</p>`;
   const info=g.filter(x=>["epub","noname","nodue","nopages","oddlang"].includes(x.key) && x.count).map(x=>{
@@ -2170,7 +2247,7 @@ document.addEventListener("click", async e=>{
   if(d.dropf!=null){ S.dropF=d.dropf; render(); return; }
   if(d.ignore){ await cleanIgnore(d.ignore.split("\n")); return; }
   if(d.skip){ (S.cleanSkip ||= new Set()); S.cleanSkip.has(d.skip)?S.cleanSkip.delete(d.skip):S.cleanSkip.add(d.skip); render(); return; }
-  if(d.apply){ await applyProposals(d.apply); return; }
+  if(d.apply){ await applyProposals(d.apply, d.tbr==="1"); return; }
   if(d.libretire!=null){ const list=S.libs.map(l=>({...l})); list[+d.libretire].active=false; try{ await queued("libraries",()=>S.db.doc("lib/libraries").set({list})); toast("Flyttat till tidigare bibliotek."); }catch(e){ dbFail(e); } return; }
   if(d.libsave!=null){ const i=+d.libsave; const list=S.libs.map(l=>({...l})); const g=k=>{ const el=$("#lib_"+i+"_"+k); return el?el.value.trim():""; };
     list[i]={...list[i], holds:+g("holds")||0, loans:+g("loans")||0, days:+g("days")||0, validTo:parseDate(g("validTo"))};
