@@ -370,7 +370,8 @@ function listEstimate(){
 // Author preference: your direct answer (Inkorg) first, then the latest rating-form answer from Nov 2026 on overrides it. 10+ read = yes.
 const PREF_VAL={ja:5,kanske:3,nej:1};
 // "avliden": no new books will come. Not a score, so it never triggers questions about books left on the list.
-const PREF_LABEL={ja:"Ja",kanske:"Kanske",nej:"Nej",avliden:"Avliden"};
+// "vetej": read too little or too long ago to know. Not a score; for book alerts later: search more rarely.
+const PREF_LABEL={ja:"Ja",kanske:"Kanske",nej:"Nej",vetej:"Vet ej",avliden:"Avliden"};
 function isDeadAuthor(name){ const k=authorKey(name); return (S.authorPref||{})[k]==="avliden"; }
 function authorMore(){
   const m={}; const cnt={};
@@ -513,7 +514,7 @@ async function maybeEnrich(){
     "power r":"Rory Power", "power r.":"Rory Power", "power, r":"Rory Power", "power, r.":"Rory Power", "power; r":"Rory Power"};
   for(const b of S.books){ const to=AUTHOR_RENAME[String(b.author||"").replace(/\s+/g," ").trim().toLowerCase()]; if(to) (byDoc[b._doc] ||= {})[b.id]={...((byDoc[b._doc]||{})[b.id]||{}), author:to}; }
   // Authors Kitty said are dead: mark as Avliden (matched on surname, Martinson with one or two s).
-  const DEAD_NAMED={"asimov|i":"1992", "martinson|h":"1978", "martinson|m":"1964"}; const dp={}, dd={};
+  const DEAD_NAMED={"asimov|i":"1992", "martinson|h":"1978", "martinson|m":"1964", "heinlein|r":"1988"}; const dp={}, dd={};
   for(const b of S.books){ const raw=String(b.author||"").replace(/\s+/g," ").trim(); const name=AUTHOR_RENAME[raw.toLowerCase()]||raw; const k=authorKey(name);
     const sa=splitAuthor(name); if(!sa) continue; const y=DEAD_NAMED[norm(sa.last).split(" ").pop()+"|"+sa.init.toLowerCase()];
     if(y && (S.authorPref||{})[k]!=="avliden"){ dp[k]="avliden"; dd[k]=y; } }
@@ -1048,7 +1049,7 @@ async function findDeadAuthors(){
   if(deadRun || !S.db || !S.loaded || S.isOwner===false) return; deadRun=true;
   const P=S.authorPref||{}, C=S.deadChecked||{}; const names={};
   S.books.forEach(b=>{ const a=String(b.author||"").replace(/\s+/g," ").trim(); const k=authorKey(a);
-    if(!a || (P[k] && P[k]!=="nej") || C[k] || / och | and |&|\/|\(/i.test(a)) return;
+    if(!a || (P[k] && P[k]!=="nej" && P[k]!=="vetej") || C[k] || / och | and |&|\/|\(/i.test(a)) return;
     const m=a.match(/^([^,;]+)[,;]\s*([^,;]+)$/); const full=m?m[2].trim()+" "+m[1].trim():a;
     if(/[,;]/.test(full) || !full.includes(" ")) return; names[k]=full; });
   const todo=Object.entries(names).slice(0,120);
@@ -1420,9 +1421,9 @@ function authorView(){
     <div class="tile"><div class="v">${all.length}</div><div class="l">böcker i listan</div></div>
     <div class="tile"><div class="v">${read.length}</div><div class="l">lästa</div></div>
     <div class="tile"><div class="v">${avg?fmtRating(avg):"–"}</div><div class="l">snittbetyg${rated.length?" ("+rated.length+" betygsatta)":""}</div></div>
-    <div class="tile"><div class="v" style="font-size:22px">${(S.authorPref||{})[key]==="avliden"?"Avliden":more?esc(MORE_LABELS[more]):"–"}</div><div class="l">${(S.authorPref||{})[key]==="avliden"?((S.authorDead||{})[key]?"död "+esc((S.authorDead||{})[key])+" · ":"")+"inga nya böcker":"läsa mer av författaren?"}</div></div>
+    <div class="tile"><div class="v" style="font-size:22px">${(S.authorPref||{})[key]==="avliden"?"Avliden":(S.authorPref||{})[key]==="vetej"?"Vet ej":more?esc(MORE_LABELS[more]):"–"}</div><div class="l">${(S.authorPref||{})[key]==="avliden"?((S.authorDead||{})[key]?"död "+esc((S.authorDead||{})[key])+" · ":"")+"inga nya böcker":"läsa mer av författaren?"}</div></div>
   </div>
-  <div class="chips"><span class="muted small" style="align-self:center">Läsa mer?</span>${["ja","kanske","nej","avliden"].map(v=>`<button class="chip" data-apref="${v}" data-k="${esc(key)}" aria-pressed="${(S.authorPref||{})[key]===v}">${PREF_LABEL[v]}</button>`).join("")}</div>
+  <div class="chips"><span class="muted small" style="align-self:center">Läsa mer?</span>${["ja","kanske","nej","vetej","avliden"].map(v=>`<button class="chip" data-apref="${v}" data-k="${esc(key)}" aria-pressed="${(S.authorPref||{})[key]===v}">${PREF_LABEL[v]}</button>`).join("")}</div>
   <div class="chips">${chip("","Alla",all.length)}${chip("unread","Olästa",all.filter(b=>["tbr","reading"].includes(phase(b))).length)}${chip("read","Lästa",read.length)}${chip("dnf","Bortvalda",all.filter(b=>phase(b)==="dnf").length)}</div>
   ${list.length?`<div class="list">${list.map(bookRow).join("")}</div>`:`<div class="empty">Inga böcker här.</div>`}`;
 }
@@ -1604,8 +1605,8 @@ function authorPrefList(){
 function authorPrefSection(){
   const l=authorPrefList(); if(!l.length) return "";
   return `<div class="card"><div class="sec-h"><h3>Vill du läsa mer av de här författarna?</h3><span class="muted small">${l.length} kvar</span></div>
-    <p class="muted small" style="margin-top:0">Författare du läst 1–9 böcker av, flest först. Ja lyfter dem i Bäst förslag först. Nej gör att Inkorgen frågar om deras böcker som ligger kvar på listan. Avliden betyder bara att inga nya böcker kommer: böckerna på listan påverkas inte. Appen markerar avlidna författare själv med hjälp av Wikidata.</p>
-    ${l.slice(0,15).map(([k,e])=>`<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><div class="grow">${authorLink(e.name)} <span class="muted small">${e.read} lästa${e.left?" · "+e.left+" på listan":""}</span></div>${["ja","kanske","nej","avliden"].map(v=>`<button class="chip" data-apref="${v}" data-k="${esc(k)}">${PREF_LABEL[v]}</button>`).join("")}</div>`).join("")}
+    <p class="muted small" style="margin-top:0">Författare du läst 1–9 böcker av, flest först. Ja lyfter dem i Bäst förslag först. Nej gör att Inkorgen frågar om deras böcker som ligger kvar på listan. Vet ej är för dem du inte minns: de räknas varken upp eller ner och du får inte frågan igen. Avliden betyder bara att inga nya böcker kommer: böckerna på listan påverkas inte. Appen markerar avlidna författare själv med hjälp av Wikidata.</p>
+    ${l.slice(0,15).map(([k,e])=>`<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><div class="grow">${authorLink(e.name)} <span class="muted small">${e.read} lästa${e.left?" · "+e.left+" på listan":""}</span></div>${["ja","kanske","nej","vetej","avliden"].map(v=>`<button class="chip" data-apref="${v}" data-k="${esc(k)}">${PREF_LABEL[v]}</button>`).join("")}</div>`).join("")}
     ${l.length>15?`<p class="muted small" style="margin-bottom:0">Nästa 15 visas när du svarat på de här.</p>`:""}</div>`;
 }
 async function setAuthorPref(k,v){
