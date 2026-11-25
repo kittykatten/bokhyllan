@@ -516,6 +516,10 @@ async function maybeEnrich(){
   for(const b of S.books){ const t=norm(String(b.title).split(":")[0]), a=norm(b.author);
     if(NOT_SERIES.some(([x,y])=>norm(x)===t && a.includes(y)) && !b.notSeries) put(b,{notSeries:true, wdSeries:null, ...(b.series?{series:"",num:""}:{})});
     const gs=GR_SERIES.find(([x,y])=>norm(x)===t && a.includes(y)); if(gs && !b.series) put(b,{series:gs[2], num:gs[3], wdSeries:null}); }
+  // Silo and The Handmaid's Tale: remove rows that are TV episodes/seasons (came in from Wikidata). Only these exact titles.
+  const TV_ROWS=new Set(["A Dark Web", "A Woman's Place", "After", "Allegiance", "Baggage", "Ballet", "Barricades", "Birth Day", "Border", "Chicago", "Dear Offred", "Descent", "Devotion", "Execution", "Exile", "Exodus", "Fairytale", "Faithful", "Farewell", "First Blood", "Freedom Day", "God Bless the Child", "Gray Goo", "Hanna", "Heroic", "Holly", "Holston's Pick", "Home", "Household", "Into the Fire", "It's All Good", "Janine", "Jezebels", "June", "Late", "Liars", "Machines", "Mary and Martha", "Mayday", "Memory", "Milk", "Morning", "Motherland", "Night", "Nightshade", "No Man’s Land", "Nolite Te Bastardes Carborundorum", "Offred", "Order", "Other Women", "Outside", "Pigs", "Postpartum", "Progress", "Promotion", "Radio", "Sacrifice", "Safe", "Seeds", "Shattered", "Silo, season 1", "Silo, season 2", "Silo, season 3", "Smart Power", "Solo", "Surprise", "Testimony", "The Book of Quinn", "The Bridge", "The Crossing", "The Dive", "The Drive", "The Engineer", "The Flamekeepers", "The Getaway", "The Handmaid's Tale, season 1", "The Handmaid's Tale, season 2", "The Handmaid's Tale, season 3", "The Handmaid's Tale, season 4", "The Handmaid's Tale, season 5", "The Handmaid's Tale, season 6", "The Harmonium", "The Janitor's Boy", "The Last Ceremony", "The Other Side", "The Relic", "The Safeguard", "The Wilderness", "The Word", "Together", "Train", "Troy", "Truth", "Under His Eye", "Unfit", "Unknown Caller", "Unwomen", "Useful", "Vows", "Whatever You Do, Don't Go Home", "Who Are You?", "Witness", "Women's Work"].map(norm));
+  for(const x of S.series){ const sn=norm(cleanSeriesName(x.series)).replace(/ /g,""); if(sn!=="silo" && sn!=="thehandmaidstale") continue;
+    if(TV_ROWS.has(norm(x.title)) && !x.read){ try{ await removeItem(x.id, x._doc); }catch(_){} } }
   // Author names Kitty asked to have corrected.
   const AUTHOR_RENAME={"ajvide lindqvist; j":"John Ajvide Lindqvist",
     "harry martinsson":"Harry Martinson", "martinsson, harry":"Harry Martinson", "martinson, harry":"Harry Martinson", "martinsson; h":"Harry Martinson",
@@ -1118,7 +1122,7 @@ async function findSeries(){
 let gapRun=false;
 async function findSeriesGaps(){
   if(gapRun || !S.db || !S.loaded || S.isOwner===false) return; gapRun=true;
-  const cs=S.docs.cleanState||{}; const chk=cs.serChecked2||{}; const today=todayISO();
+  const cs=S.docs.cleanState||{}; const chk=cs.serChecked3||{}; const today=todayISO();
   const old=d=>!d || (Date.parse(today)-Date.parse(d))/864e5>30;
   const groups=seriesGroups().filter(g=>!isAbandoned(g.name) && old(chk[g.name.toLowerCase()])).slice(0,24);
   const checked={}, gaps={};
@@ -1127,6 +1131,7 @@ async function findSeriesGaps(){
     const varOf={}; part.forEach(g=>seriesNameVariants(g.name).forEach(v=>varOf[norm(v)]=g.name));
     const vals=Object.keys(varOf).length?part.flatMap(g=>seriesNameVariants(g.name).flatMap(v=>["en","sv","mul"].map(l=>JSON.stringify(v)+"@"+l))).join(" "):"";
     const q=`SELECT ?name ?m ?ord ?date ?parts ?te ?ts ?al WHERE { VALUES ?name { ${vals} }
+      FILTER NOT EXISTS { ?m wdt:P31 ?tv . VALUES ?tv { wd:Q21191270 wd:Q3464665 wd:Q5398426 wd:Q11424 wd:Q7889 wd:Q24862 wd:Q1259759 wd:Q838795 wd:Q25379 } }
       { ?s rdfs:label ?name . ?st ps:P179 ?s . ?m p:P179 ?st . OPTIONAL { ?st pq:P1545 ?ord } OPTIONAL { ?s wdt:P1114 ?parts } }
       OPTIONAL { ?m wdt:P577 ?date } OPTIONAL { ?m rdfs:label ?te FILTER(LANG(?te)="en") } OPTIONAL { ?m rdfs:label ?ts FILTER(LANG(?ts)="sv") }
       OPTIONAL { ?m wdt:P50 ?a . ?a rdfs:label ?al FILTER(LANG(?al)="en") } }`;
@@ -1135,7 +1140,8 @@ async function findSeriesGaps(){
     for(const g of part){
       checked[g.name.toLowerCase()]=today;
       const surs=new Set(g.items.map(it=>{ const sa=splitAuthor(String(it.author||"")); return sa?norm(sa.last).split(" ").pop():""; }).filter(Boolean));
-      const mine=rows.filter(r=>varOf[norm(r.name.value)]===g.name && (!r.al || !surs.size || [...surs].some(x=>norm(r.al.value).includes(x))));
+      if(!surs.size) continue;
+      const mine=rows.filter(r=>varOf[norm(r.name.value)]===g.name && r.al && [...surs].some(x=>norm(r.al.value).includes(x)));
       if(!mine.length) continue;
       const mem={}; let parts=0;
       mine.forEach(r=>{ const k=r.m.value; const e=(mem[k] ||= {}); if(r.ord) e.num=firstNum(r.ord.value); if(r.date) e.date=(e.date&&e.date<r.date.value)?e.date:r.date.value;
@@ -1156,7 +1162,7 @@ async function findSeriesGaps(){
     await new Promise(r=>setTimeout(r,1100));
   }
   if(Object.keys(checked).length){
-    const upd={serChecked2:checked}; if(Object.keys(gaps).length) upd.serGaps2=gaps;
+    const upd={serChecked3:checked}; if(Object.keys(gaps).length) upd.serGaps3=gaps;
     try{ await queued("cleanState",()=>S.db.doc("lib/cleanState").update(upd)); cleanProposals._r=null;
       const n=Object.keys(gaps).length; if(n){ render(); toast(n+(n===1?" bok":" böcker")+" saknas i dina serier. Se Inkorgen."); } }catch(_){}
   }
@@ -1411,7 +1417,7 @@ function cleanProposals(){
   Object.values(nameGroups).forEach((g,i)=>{ const patches={}; g.ids.forEach(id=>patches[id]={author:g.to}); out.push({id:"nm"+i, key:"p:nm:"+g.from+"→"+g.to, group:"names", title:g.to, detail:"ersätter “"+g.from+"” · "+g.ids.length+(g.ids.length>1?" böcker":" bok"), patches}); });
   S.books.filter(b=>b.wdSeries && !seriesOf(b) && !b.notSeries && (b.wdSeries.src==="P179" || !b.seriesTried2)).forEach(b=>{ const w=b.wdSeries; const nm=fixSeriesName(w.name,b.lang);
     out.push({id:"wd"+b.id, key:"p:wd:"+b.id, group:"wdseries", title:b.title, detail:`${nm}${(b.num||w.num)?" #"+firstNum(b.num||w.num):""} (Wikidata)`, patches:{[b.id]:{series:nm, num:firstNum(b.num||w.num||"")}}, bookId:b.id}); });
-  { const SG={...GR_GAPS, ...((S.docs.cleanState&&S.docs.cleanState.serGaps2)||{})}; const grp={}; seriesGroups().forEach(g=>grp[g.name.toLowerCase()]=g);
+  { const SG={...GR_GAPS, ...((S.docs.cleanState&&S.docs.cleanState.serGaps3)||{})}; const grp={}; seriesGroups().forEach(g=>grp[g.name.toLowerCase()]=g);
     Object.entries(SG).forEach(([k,x])=>{ if(!x) return; const g=grp[String(x.series).toLowerCase()]; if(g && x.title!=="?" && g.items.some(it=>norm(it.title)===norm(x.title))) return;
       if(g && x.title==="?" && g.items.some(it=>String(it.num)===String(x.num))) return;
       out.push({id:"sg:"+k, key:"p:sg:"+k, group:"sermissing", title:x.title==="?"?`${x.series} #${x.num}`:x.title,
@@ -1446,7 +1452,7 @@ async function applyProposals(which, alsoTbr){
   const adds=list.flatMap(p=>p.adds||[]);
   if(adds.length){
     try{ for(const x of adds){
-        await putItem("series", uid("s"), {title:x.title, author:x.author, series:x.series, num:x.num, year:x.year||"", pages:"", lang:x.lang||"", inList:false, read:false, comment:x.release?"Släpps "+x.release:""});
+        await putItem("series", uid("s"), {title:x.title, author:x.author, series:x.series, num:x.num, year:x.year||"", pages:"", lang:x.lang||"", inList:false, read:false, comment:x.release?"Släpps "+x.release:"", src:x.src||"Wikidata"});
         if(alsoTbr && x.title!=="?" && !findBook(x.title)){ const like=S.books.find(b=>authorKey(b.author)===authorKey(x.author));
           await putItem("books", uid("b"), {kind:"bok", title:x.title, author:x.author, gender:(like&&like.gender)||"", lang:x.lang||"", origLang:"", status:"", source:"", format:"", started:"", read:"", due:"", comment:"",
             year:x.year?+x.year:"", pages:"", series:x.series, num:x.num, rating:0, extra:{}, genres:(like&&like.genres)||[], ratingForm:{}, moreAuthor:0, added:todayISO(), release:x.release||"", ownPick:true}); } }
