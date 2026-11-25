@@ -509,7 +509,8 @@ async function maybeEnrich(){
   const AUTHOR_RENAME={"ajvide lindqvist; j":"John Ajvide Lindqvist",
     "harry martinsson":"Harry Martinson", "martinsson, harry":"Harry Martinson", "martinson, harry":"Harry Martinson", "martinsson; h":"Harry Martinson",
     "moa martinsson":"Moa Martinson", "martinsson, moa":"Moa Martinson", "martinson, moa":"Moa Martinson",
-    "asimov, isaac":"Isaac Asimov", "asimov; i":"Isaac Asimov"};
+    "asimov, isaac":"Isaac Asimov", "asimov; i":"Isaac Asimov",
+    "power r":"Rory Power", "power r.":"Rory Power", "power, r":"Rory Power", "power, r.":"Rory Power", "power; r":"Rory Power"};
   for(const b of S.books){ const to=AUTHOR_RENAME[String(b.author||"").replace(/\s+/g," ").trim().toLowerCase()]; if(to) (byDoc[b._doc] ||= {})[b.id]={...((byDoc[b._doc]||{})[b.id]||{}), author:to}; }
   // Authors Kitty said are dead: mark as Avliden (matched on surname, Martinson with one or two s).
   const DEAD_NAMED={"asimov|i":"1992", "martinson|h":"1978", "martinson|m":"1964"}; const dp={}, dd={};
