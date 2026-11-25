@@ -520,6 +520,23 @@ async function maybeEnrich(){
   const TV_ROWS=new Set(["A Dark Web", "A Woman's Place", "After", "Allegiance", "Baggage", "Ballet", "Barricades", "Birth Day", "Border", "Chicago", "Dear Offred", "Descent", "Devotion", "Execution", "Exile", "Exodus", "Fairytale", "Faithful", "Farewell", "First Blood", "Freedom Day", "God Bless the Child", "Gray Goo", "Hanna", "Heroic", "Holly", "Holston's Pick", "Home", "Household", "Into the Fire", "It's All Good", "Janine", "Jezebels", "June", "Late", "Liars", "Machines", "Mary and Martha", "Mayday", "Memory", "Milk", "Morning", "Motherland", "Night", "Nightshade", "No Man’s Land", "Nolite Te Bastardes Carborundorum", "Offred", "Order", "Other Women", "Outside", "Pigs", "Postpartum", "Progress", "Promotion", "Radio", "Sacrifice", "Safe", "Seeds", "Shattered", "Silo, season 1", "Silo, season 2", "Silo, season 3", "Smart Power", "Solo", "Surprise", "Testimony", "The Book of Quinn", "The Bridge", "The Crossing", "The Dive", "The Drive", "The Engineer", "The Flamekeepers", "The Getaway", "The Handmaid's Tale, season 1", "The Handmaid's Tale, season 2", "The Handmaid's Tale, season 3", "The Handmaid's Tale, season 4", "The Handmaid's Tale, season 5", "The Handmaid's Tale, season 6", "The Harmonium", "The Janitor's Boy", "The Last Ceremony", "The Other Side", "The Relic", "The Safeguard", "The Wilderness", "The Word", "Together", "Train", "Troy", "Truth", "Under His Eye", "Unfit", "Unknown Caller", "Unwomen", "Useful", "Vows", "Whatever You Do, Don't Go Home", "Who Are You?", "Witness", "Women's Work"].map(norm));
   for(const x of S.series){ const sn=norm(cleanSeriesName(x.series)).replace(/ /g,""); if(sn!=="silo" && sn!=="thehandmaidstale") continue;
     if(TV_ROWS.has(norm(x.title)) && !x.read){ try{ await removeItem(x.id, x._doc); }catch(_){} } }
+  // Hand-checked series (FIXED_SERIES): publication-order numbers on rows and books; unread rows that are not one of the
+  // listed books and not a book in the list are removed. Hainish Cycle: rows that came in as suggested parts are removed.
+  { const HAINISH=new Set(["City of Illusions","Illusionernas stad","Coming of Age in Karhide","Four Ways to Forgiveness","Planet of Exile","Exilplaneten","Rocannon's World","Rocannons planet",
+      "The Day Before the Revolution","The Dispossessed","De obesuttna","The Dowry of Angyar","The Left Hand of Darkness","Mörkrets vänstra hand","The Matter of Seggri","The Shobies' Story",
+      "The Telling","Berättelsen är världens språk","The Word for World Is Forest","Där världen kallas skog","Vaster Than Empires and More Slow","Winter's King"].map(norm));
+    const groups=seriesGroups();
+    for(const g of groups){
+      const f=fixedFor(g);
+      if(f){ const numOf=t=>{ const k=norm(String(t).split(":")[0]); const e=f.books.find(([n,tt,y,alt])=>[tt,...alt].some(x=>norm(x)===k)); return e?e[0]:null; };
+        for(const it of g.items){ const n=numOf(it.title);
+          if(it.bookId){ const b=S.books.find(x=>x.id===it.bookId); if(b && n && b.series && firstNum(b.num)!==n) put(b,{num:n}); }
+          const row=S.series.find(x=>x.id===it.id); if(!row) continue;
+          if(n){ if(firstNum(row.num)!==n){ try{ await putItem("series",row.id,{...row,num:n},row._doc); }catch(_){} } }
+          else if(!it.bookId && !row.read && !findBook(row.title) && !(f.skipNums||[]).includes(firstNum(row.num))){ try{ await removeItem(row.id,row._doc); }catch(_){} } } }
+      if(isUniverse(g.name)) for(const it of g.items){ if(it.bookId || it.read) continue; const row=S.series.find(x=>x.id===it.id);
+        if(row && !findBook(row.title) && (row.src || HAINISH.has(norm(row.title)))){ try{ await removeItem(row.id,row._doc); }catch(_){} } }
+    } }
   // Author names Kitty asked to have corrected.
   const AUTHOR_RENAME={"ajvide lindqvist; j":"John Ajvide Lindqvist",
     "harry martinsson":"Harry Martinson", "martinsson, harry":"Harry Martinson", "martinson, harry":"Harry Martinson", "martinsson; h":"Harry Martinson",
@@ -578,6 +595,7 @@ function rebuild(){
   S.meta=S.docs.meta || null;
   S.libs=(S.docs.libraries && S.docs.libraries.list) || [];
   S.abandoned=(S.docs.seriesState && S.docs.seriesState.abandoned) || {};
+  S.universe=(S.docs.seriesState && S.docs.seriesState.universe) || {};
   S.authorPref=(S.docs.authors && S.docs.authors.pref) || {};
   S.authorDead=(S.docs.authors && S.docs.authors.dead) || {}; S.deadChecked=(S.docs.authors && S.docs.authors.checked2) || {};
   S.ignoreDups=(S.docs.cleanState && S.docs.cleanState.ignoreDups) || {};
@@ -1030,7 +1048,7 @@ async function wikidataSeries(b){
   const q=`SELECT ?b ?sLabel ?ord ?prev ?next WHERE {
     SERVICE wikibase:mwapi { bd:serviceParam wikibase:endpoint "www.wikidata.org"; wikibase:api "EntitySearch"; mwapi:search "${t}"; mwapi:language "${lang}". ?b wikibase:apiOutputItem mwapi:item. }
     ?b wdt:P50 ?a. ?a rdfs:label ?al. FILTER(CONTAINS(LCASE(STR(?al)), "${sur}"))
-    OPTIONAL { ?b p:P179 ?st. ?st ps:P179 ?s. OPTIONAL { ?st pq:P1545 ?ord } }
+    OPTIONAL { ?b p:P179 ?st. ?st ps:P179 ?s. OPTIONAL { ?st pq:P1545 ?ord } FILTER NOT EXISTS { ?s wdt:P31 ?cyc . VALUES ?cyc { wd:Q1667921 wd:Q559618 } } }
     OPTIONAL { ?b wdt:P155 ?prev } OPTIONAL { ?b wdt:P156 ?next }
     SERVICE wikibase:label { bd:serviceParam wikibase:language "${lang},en". } } LIMIT 5`;
   const d=await fetchJson("https://query.wikidata.org/sparql?format=json&query="+encodeURIComponent(q));
@@ -1063,13 +1081,27 @@ async function findFullNames(){
   if(Object.keys(patches).length && await batchUpdate(patches) && done.length) toast("Rättade författarnamn: "+done.join(", "));
   fullNameRun=false;
 }
+// Series checked by hand against Goodreads (publication order). For these the list below is the truth:
+// Wikidata is not asked, missing books are suggested from here, and titles in "alt" count as the same book.
+const FIXED_SERIES=[
+  {match:/^(the )?foundation|stiftelse/, author:"asimov", name:"Foundation", author_full:"Isaac Asimov", books:[
+    ["1","Foundation","1951",["Stiftelsen"]],["2","Foundation and Empire","1952",["Stiftelsen och imperiet"]],["3","Second Foundation","1953",["Den segrande stiftelsen","Andra stiftelsen"]],
+    ["4","Foundation's Edge","1982",["Stiftelsen och tiden"]],["5","Foundation and Earth","1986",["Stiftelsen och jorden"]],["6","Prelude to Foundation","1988",[]],["7","Forward the Foundation","1993",[]]]},
+  {match:/^semiosis/, author:"burke", name:"Semiosis", author_full:"Sue Burke", books:[["1","Semiosis","2018",[]],["2","Interference","2019",[]]]},
+  {match:/handmaid|tjänarinnan/, author:"atwood", name:"The Handmaid's Tale", author_full:"Margaret Atwood", books:[["1","The Handmaid's Tale","1985",["Tjänarinnans berättelse"]],["2","The Testaments","2019",["Testamentena","Gileads döttrar"]]]},
+  {match:/^silo|^wool/, author:"howey", name:"Silo", author_full:"Hugh Howey", books:[["1","Wool","2012",["Silo","Wool Omnibus"]],["2","Shift","2013",["Skift"]],["3","Dust","2013",["Stoft"]]]},
+  {match:/mumin|moomin/, author:"jansson", name:"Mumintrollen", author_full:"Tove Jansson", lang:"Svenska", books:[
+    ["1","Småtrollen och den stora översvämningen","1945",["The Moomins and the Great Flood"]],["2","Kometen kommer","1946",["Kometjakten","Mumintrollet och kometen","Comet in Moominland"]],
+    ["3","Trollkarlens hatt","1948",["Finn Family Moomintroll"]],["4","Muminpappans memoarer","1950",["Muminpappans bravader","The Exploits of Moominpappa"]],
+    ["5","Farlig midsommar","1954",["Moominsummer Madness"]],["6","Trollvinter","1957",["Moominland Midwinter"]],
+    ["8","Pappan och havet","1965",["Moominpappa at Sea"]],["9","Sent i november","1970",["Moominvalley in November"]]],
+    skipNums:["7"]}];
+function fixedFor(g){ const k=String(g.name||"").trim().toLowerCase(); return FIXED_SERIES.find(f=>f.match.test(k) && (!g.author || norm(g.author).includes(f.author))); }
 // Missing parts from Goodreads series pages Kitty sent (shown in the Inkorg for approval like the Wikidata ones).
 const GR_GAPS={
   "St. Leibowitz|2|gr":{series:"St. Leibowitz", title:"Saint Leibowitz and the Wild Horse Woman", author:"Walter M. Miller Jr.", num:"2", year:"1997", release:"", lang:"Engelska", src:"Goodreads"},
   "Blade Runner|2|gr":{series:"Blade Runner", title:"Blade Runner 2: The Edge of Human", author:"K. W. Jeter", num:"2", year:"1995", release:"", lang:"Engelska", src:"Goodreads"},
   "Blade Runner|3|gr":{series:"Blade Runner", title:"Blade Runner 3: Replicant Night", author:"K. W. Jeter", num:"3", year:"1996", release:"", lang:"Engelska", src:"Goodreads"},
-  "Silo|2|gr":{series:"Silo", title:"Shift", author:"Hugh Howey", num:"2", year:"2013", release:"", lang:"Engelska", src:"Goodreads"},
-  "Silo|3|gr":{series:"Silo", title:"Dust", author:"Hugh Howey", num:"3", year:"2013", release:"", lang:"Engelska", src:"Goodreads"},
   "Blade Runner|4|gr":{series:"Blade Runner", title:"Blade Runner 4: Eye and Talon", author:"K. W. Jeter", num:"4", year:"2000", release:"", lang:"Engelska", src:"Goodreads"}};
 // Mark dead authors once, from Wikidata (free, runs in the browser). Only when every writer with that exact name has a date of death.
 let deadRun=false;
@@ -1126,7 +1158,7 @@ async function findSeriesGaps(){
   if(gapRun || !S.db || !S.loaded || S.isOwner===false) return; gapRun=true;
   const cs=S.docs.cleanState||{}; const chk=cs.serChecked4||{}; const today=todayISO();
   const old=d=>!d || (Date.parse(today)-Date.parse(d))/864e5>30;
-  const groups=seriesGroups().filter(g=>!isAbandoned(g.name) && old(chk[g.name.toLowerCase()]));
+  const groups=seriesGroups().filter(g=>!isAbandoned(g.name) && !isUniverse(g.name) && !fixedFor(g) && old(chk[g.name.toLowerCase()]));
   let checked={}, gaps={}, found=0;
   S.gapProgress={left:groups.length}; if(location.hash==="#stada") render();
   const save=async()=>{ if(!Object.keys(checked).length) return; const upd={serChecked4:checked}; if(Object.keys(gaps).length) upd.serGaps4=gaps;
@@ -1138,7 +1170,7 @@ async function findSeriesGaps(){
     const q=`SELECT ?name ?m ?ord ?date ?parts ?te ?ts ?al WHERE { VALUES ?name { ${vals} }
       FILTER NOT EXISTS { ?m wdt:P31 ?tv . VALUES ?tv { wd:Q21191270 wd:Q3464665 wd:Q5398426 wd:Q11424 wd:Q7889 wd:Q24862 wd:Q1259759 wd:Q838795 wd:Q25379 } }
       FILTER NOT EXISTS { ?m wdt:P31|wdt:P7937|wdt:P136 ?ss . VALUES ?ss { wd:Q49084 wd:Q1279564 wd:Q105420 wd:Q1095389 wd:Q149537 wd:Q5185279 wd:Q35760 wd:Q725377 wd:Q1004 wd:Q8274 wd:Q7725310 } }
-      { ?s rdfs:label ?name . ?st ps:P179 ?s . ?m p:P179 ?st . OPTIONAL { ?st pq:P1545 ?ord } OPTIONAL { ?s wdt:P1114 ?parts } }
+      { ?s rdfs:label ?name . FILTER NOT EXISTS { ?s wdt:P31 ?cyc . VALUES ?cyc { wd:Q1667921 wd:Q559618 } } ?st ps:P179 ?s . ?m p:P179 ?st . OPTIONAL { ?st pq:P1545 ?ord } OPTIONAL { ?s wdt:P1114 ?parts } }
       OPTIONAL { ?m wdt:P577 ?date } OPTIONAL { ?m rdfs:label ?te FILTER(LANG(?te)="en") } OPTIONAL { ?m rdfs:label ?ts FILTER(LANG(?ts)="sv") }
       OPTIONAL { ?m wdt:P50 ?a . ?a rdfs:label ?al FILTER(LANG(?al)="en") } }`;
     let d; try{ d=await fetchJson("https://query.wikidata.org/sparql?format=json&query="+encodeURIComponent(q)); }catch(_){ break; }
@@ -1424,7 +1456,12 @@ function cleanProposals(){
     out.push({id:"wd"+b.id, key:"p:wd:"+b.id, group:"wdseries", title:b.title, detail:`${nm}${(b.num||w.num)?" #"+firstNum(b.num||w.num):""} (Wikidata)`, patches:{[b.id]:{series:nm, num:firstNum(b.num||w.num||"")}}, bookId:b.id}); });
   { const SG={...GR_GAPS, ...((S.docs.cleanState&&S.docs.cleanState.serGaps4)||{})}; const grp={}; seriesGroups().forEach(g=>grp[g.name.toLowerCase()]=g);
     const grNum=new Set(Object.values(GR_GAPS).map(x=>norm(x.series)+"|"+x.num));
-    Object.entries(SG).forEach(([k,x])=>{ if(!x || isAbandoned(x.series)) return; if(!GR_GAPS[k] && grNum.has(norm(x.series)+"|"+x.num)) return; const g=grp[String(x.series).toLowerCase()]; if(g && x.title!=="?" && g.items.some(it=>norm(it.title)===norm(x.title))) return;
+    Object.values(grp).forEach(g=>{ const f=fixedFor(g); if(!f || isAbandoned(g.name)) return;
+      const haveT=new Set(g.items.map(it=>norm(String(it.title).split(":")[0]))); const haveN=new Set(g.items.map(it=>String(firstNum(it.num||""))).filter(Boolean));
+      f.books.forEach(([n,t,y,alt])=>{ if(haveN.has(n) || [t,...alt].some(x=>haveT.has(norm(x.split(":")[0])))) return;
+        const k=g.name+"|"+n+"|fixed"; out.push({id:"sg:"+k, key:"p:sg:"+k, group:"sermissing", title:t, detail:`${g.name} #${n} · ${y} · ${f.author_full} (Goodreads)`, patches:{},
+          adds:[{series:g.name, title:t, author:f.author_full, num:n, year:y, release:"", lang:f.lang||(g.items.find(it=>it.lang)||{}).lang||"", src:"Goodreads"}]}); }); });
+    Object.entries(SG).forEach(([k,x])=>{ if(!x || isAbandoned(x.series) || isUniverse(x.series)) return; { const g0=grp[String(x.series).toLowerCase()]; if(g0 && fixedFor(g0) && !GR_GAPS[k]) return; } if(!GR_GAPS[k] && grNum.has(norm(x.series)+"|"+x.num)) return; const g=grp[String(x.series).toLowerCase()]; if(g && x.title!=="?" && g.items.some(it=>norm(it.title)===norm(x.title))) return;
       if(g && x.title==="?" && g.items.some(it=>String(it.num)===String(x.num))) return;
       out.push({id:"sg:"+k, key:"p:sg:"+k, group:"sermissing", title:x.title==="?"?`${x.series} #${x.num}`:x.title,
         detail:x.title==="?"?"Titel inte känd än (Wikidata)":`${x.series} #${x.num}${x.release?" · släpps "+fmtDate(x.release):x.year?" · "+x.year:""} · ${x.author} (${x.src||"Wikidata"})`, patches:{}, adds:[x]}); }); }
@@ -2020,7 +2057,7 @@ function seriesView(){
         <span class="muted small" style="font-variant-numeric:tabular-nums;white-space:nowrap">${g.read} av ${g.total} ${open?"▴":"▾"}</span></div>
       <div class="prog"><i style="width:${g.total?g.read/g.total*100:0}%"></i></div>
       ${open?`<table style="margin-top:8px"><tbody>${g.items.map(i=>`<tr><td class="num" style="width:36px">${i.num?"#"+esc(i.num):""}</td><td>${i.unknown?`<span class="muted">Titel inte känd än</span>`:i.bookId?`<button type="button" class="alink" data-book="${esc(i.bookId)}">${esc(i.title)}</button>`:esc(i.title)}${i.sugg?` <span class="muted small">(förslag från Open Library)</span>`:""}<div class="muted small">${[i.year,i.pages?i.pages+" s.":""].filter(Boolean).join(" · ")}</div></td><td style="text-align:right">${i.unknown?"":i.bookId?`<button class="chip" data-book="${esc(i.bookId)}" aria-pressed="${!!i.read}">${i.read?"Läst":"Ej läst"}</button>`:`<button class="chip" data-serread="${esc(i.id)}" aria-pressed="${!!i.read}">${i.read?"Läst":"Ej läst"}</button>`}</td></tr>`).join("")}</tbody></table>
-      <div class="row" style="margin-top:8px"><button class="btn small" data-abandon="${esc(g.name)}">${isAbandoned(g.name)?"Jag vill fortsätta med serien ändå":"Jag fortsätter inte med den här serien"}</button></div>`:""}
+      <div class="row" style="margin-top:8px"><button class="btn small" data-abandon="${esc(g.name)}">${isAbandoned(g.name)?"Jag vill fortsätta med serien ändå":"Jag fortsätter inte med den här serien"}</button><button class="btn small" data-universe="${esc(g.name)}">${isUniverse(g.name)?"Det är en riktig serie":"Fristående böcker i samma värld"}</button></div>`:""}
     </div>`; };
   return `<div class="row"><input type="search" id="serQ" placeholder="Sök serie, titel eller författare …" value="${esc(S.serQ)}" aria-label="Sök serie"></div>
   <div class="chips">${chip("open","Påbörjade",c.open)}${chip("unstarted","Inte påbörjade",c.unstarted)}${chip("done","Färdiga",c.done)}${chip("stopped","Avbrutna",c.stopped)}${chip("all","Alla",all.length)}</div>
@@ -2083,6 +2120,9 @@ function hnView(){
 }
 
 /* --- next book --- */
+// "Samma värld": standalone books in a shared universe (e.g. Hainish Cycle). No missing parts are suggested.
+function isUniverse(name){ const k=String(name||"").trim().toLowerCase(); const u=(S.universe||{})[k]; return u===true || (u!==false && UNIVERSE_DEFAULT.some(r=>r.test(k))); }
+const UNIVERSE_DEFAULT=[/hainish/];
 function isAbandoned(name){ return !!(S.abandoned||{})[String(name||"").trim().toLowerCase()]; }
 function seriesNextMap(){
   const m={};
@@ -2242,7 +2282,7 @@ document.addEventListener("keydown", e=>{
   if((e.key==="Enter"||e.key===" ") && e.target.matches("[role=button][data-drill],[role=button][data-book],[role=button][data-planadd],[role=button][data-planmonth],[role=button][data-seropen],[role=button][data-cleanopen],[role=button][data-pickfound]")){ e.preventDefault(); e.target.click(); }
 });
 document.addEventListener("click", async e=>{
-  const t=e.target.closest("[data-act],[data-phase],[data-book],[data-rate],[data-scope],[data-ser],[data-serread],[data-aw],[data-plan],[data-planrm],[data-planadd],[data-q],[data-genre],[data-awsrc],[data-ng],[data-planmonth],[data-py],[data-more],[data-author],[data-af],[data-seropen],[data-cleanopen],[data-fixauthor],[data-undotitle],[data-libsave],[data-libretire],[data-abandon],[data-apply],[data-skip],[data-gotoseries],[data-dupch],[data-pickfound],[data-ignore],[data-dropf],[data-addnew],[data-drill],[data-nbinfo],[data-bl],[data-nomore],[data-apref],[data-prefreview]");
+  const t=e.target.closest("[data-act],[data-phase],[data-book],[data-rate],[data-scope],[data-ser],[data-serread],[data-aw],[data-plan],[data-planrm],[data-planadd],[data-q],[data-genre],[data-awsrc],[data-ng],[data-planmonth],[data-py],[data-more],[data-author],[data-af],[data-seropen],[data-cleanopen],[data-fixauthor],[data-undotitle],[data-libsave],[data-libretire],[data-abandon],[data-apply],[data-skip],[data-gotoseries],[data-dupch],[data-pickfound],[data-ignore],[data-dropf],[data-addnew],[data-drill],[data-nbinfo],[data-bl],[data-nomore],[data-apref],[data-prefreview],[data-universe]");
   if(!t) return;
   const d=t.dataset;
   if(d.act==="close-bg" && e.target!==t) return;
@@ -2259,7 +2299,9 @@ document.addEventListener("click", async e=>{
   if(d.undotitle){ const b=S.books.find(x=>x.id===d.undotitle); if(b && await batchUpdate({[b.id]:{title:b.titleOrig, titleOrig:"", titleKeep:true}})) toast("Titeln återställd."); return; }
   if(d.gotoseries){ S.serOpen=d.gotoseries.trim(); S.serFilter="all"; S.serQ=d.gotoseries.trim(); if(S.edit){ S.edit=null; S.confirmDel=false; renderModal(); } if(location.hash==="#serier") render(); else location.hash="#serier"; $("#main").scrollTop=0; return; }
   if(d.abandon){ const k=d.abandon.trim().toLowerCase(); const ab={...(S.abandoned||{})}; if(ab[k]) delete ab[k]; else ab[k]=true;
-    try{ await queued("seriesState",()=>S.db.doc("lib/seriesState").set({abandoned:ab})); toast(ab[k]?"Serien är markerad som avbruten. Dess olästa böcker föreslås inte längre i Nästa bok.":"Serien är aktiv igen."); }catch(e){ dbFail(e); } return; }
+    try{ await queued("seriesState",()=>S.db.doc("lib/seriesState").set({abandoned:ab, universe:S.universe||{}})); toast(ab[k]?"Serien är markerad som avbruten. Dess olästa böcker föreslås inte längre i Nästa bok.":"Serien är aktiv igen."); }catch(e){ dbFail(e); } return; }
+  if(d.universe){ const k=d.universe.trim().toLowerCase(); const u={...(S.universe||{})}; if(isUniverse(k)) u[k]=false; else u[k]=true;
+    try{ await queued("seriesState",()=>S.db.doc("lib/seriesState").set({abandoned:S.abandoned||{}, universe:u})); S.universe=u; cleanProposals._r=null; render(); toast(u[k]?"Markerad som fristående böcker i samma värld. Inga saknade delar föreslås.":"Behandlas som en serie igen."); }catch(e){ dbFail(e); } return; }
   if(d.pickfound!=null){ pickFound(+d.pickfound); return; }
   if(d.dupch){ S.dupChoice={...(S.dupChoice||{})}; S.dupChoice[d.dupch] = S.dupChoice[d.dupch]===d.v ? undefined : d.v; if(!S.dupChoice[d.dupch]) delete S.dupChoice[d.dupch]; render(); return; }
   if(d.apref){ await setAuthorPref(d.k, d.apref); return; }
