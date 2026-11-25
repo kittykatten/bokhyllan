@@ -516,9 +516,9 @@ async function maybeEnrich(){
     "power r":"Rory Power", "power r.":"Rory Power", "power, r":"Rory Power", "power, r.":"Rory Power", "power; r":"Rory Power"};
   for(const b of S.books){ const to=AUTHOR_RENAME[String(b.author||"").replace(/\s+/g," ").trim().toLowerCase()]; if(to) (byDoc[b._doc] ||= {})[b.id]={...((byDoc[b._doc]||{})[b.id]||{}), author:to}; }
   // Authors Kitty said are dead: mark as Avliden (matched on surname, Martinson with one or two s).
-  const DEAD_NAMED={"asimov|i":"1992", "martinson|h":"1978", "martinson|m":"1964", "heinlein|r":"1988", "banks|i":"2013", "huxley|a":"1963"}; const dp={}, dd={};
+  const DEAD_NAMED={"asimov|i":"1992", "martinson|h":"1978", "martinson|m":"1964", "heinlein|r":"1988", "banks|i":"2013", "huxley|a":"1963", "miller|w":"1996"}; const dp={}, dd={};
   for(const b of S.books){ const raw=String(b.author||"").replace(/\s+/g," ").trim(); const name=AUTHOR_RENAME[raw.toLowerCase()]||raw; const k=authorKey(name);
-    const sa=splitAuthor(name); if(!sa) continue; const y=DEAD_NAMED[norm(sa.last).split(" ").pop()+"|"+sa.init.toLowerCase()];
+    const sa=splitAuthor(name.replace(/,?\s+(jr|sr)\.?(?=,|$)/i,"")); if(!sa) continue; const y=DEAD_NAMED[norm(sa.last).split(" ").pop()+"|"+sa.init.toLowerCase()];
     if(y && (S.authorPref||{})[k]!=="avliden"){ dp[k]="avliden"; dd[k]=y; } }
   if(Object.keys(dp).length){ try{ await queued("authors",()=>S.db.doc("lib/authors").update({pref:dp, dead:dd})); S.authorPref={...(S.authorPref||{}),...dp}; S.authorDead={...(S.authorDead||{}),...dd}; }catch(_){} }
   for(const [from,to] of Object.entries(AUTHOR_RENAME)){ const P=S.authorPref||{}, ok=authorKey(from), nk=authorKey(to); if(P[ok] && !P[nk]){ try{ await queued("authors",()=>S.db.doc("lib/authors").update({pref:{[nk]:P[ok]}})); S.authorPref={...P,[nk]:P[ok]}; }catch(_){} } }
