@@ -178,7 +178,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 <body>
 <header class="top">
   <div>
-    <h1>Bokhyllan</h1>
+    <h1><a href="#hem" style="color:inherit;text-decoration:none" title="Till Hem">Bokhyllan</a></h1>
     <div class="sub" id="sub">Läser in …</div>
   </div>
   <nav class="tabs" id="tabs">
@@ -244,7 +244,7 @@ const S = {
   db:null, mcp:null, user:null, isOwner:null,
   docs:{}, loaded:false, error:null,
   books:[], series:[], awards:[], plans:{}, meta:null,
-  f:{q:"", phase:"tbr", status:"", kind:"", sort:"plan", limit:150, ser:"", auth:"", avail:false, libby:false, nextSer:false, genre:"", lang:"", maxPages:"", gender:""},
+  f:{q:"", phase:"", status:"", kind:"", sort:"title", limit:150, ser:"", auth:"", avail:false, libby:false, nextSer:false, genre:"", lang:"", maxPages:"", gender:""},
   serQ:"", serFilter:"open", awQ:"", awFilter:"winners", planKey:null,
   importing:null, covers:new Set(), ol:{}, enrichDone:false, gc:[], awSrc:"hn", gcCat:"",
   next:{avail:true, genre:"", lang:"", maxPages:"", kind:"", gender:"", series:false, sort:"plan", auth:""}, pickId:null,
