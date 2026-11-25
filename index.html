@@ -1172,13 +1172,17 @@ async function watchAuthors(){
   const yearAgo=new Date(Date.now()-365*864e5).toISOString().slice(0,10);
   const AM=authorMore(); const P=S.authorPref||{}; const byK={};
   S.books.forEach(b=>{ const k=authorKey(b.author); if(!k || noAuthor(b.author) || /[,;&]| och /.test(b.author)) return; (byK[k] ||= []).push(b); });
-  const authors=Object.entries(byK).filter(([k])=>AM[k]>=5 && (!P[k] || P[k]==="ja") && chk[k]!==today).slice(0,40);
+  const authors=Object.entries(byK).filter(([k])=>AM[k]>=5 && (!P[k] || P[k]==="ja") && chk[k]!==today);
+  S.watchProgress={left:authors.length, total:authors.length}; if(location.hash==="#stada") render();
   const have=new Set([...S.books.map(b=>nbKey(b.title)), ...S.series.map(x=>nbKey(x.title))]);
   const SKIP=/\b(best of|collected|collection|complete|omnibus|box ?set|boxed|books? \d|trilogy|duology|stories|anthology|summary|study guide|graphic novel|colou?ring|journal|calendar|sampler|preview|excerpt|vol\.?|volume|edition|novellas?)\b/i;
   const SKIPSUBJ=/comic|graphic novel|short stor|antholog|novella|poetry|juvenile|picture book/i;
   const LC={eng:"engelska", swe:"svenska"};
-  const found={}, checked={};
-  for(const [k,list] of authors){
+  let found={}, checked={}, total=0;
+  const save=async()=>{ if(!Object.keys(checked).length) return; const upd={watchChecked:checked}; if(Object.keys(found).length) upd.watch=found;
+    try{ await queued("cleanState",()=>S.db.doc("lib/cleanState").update(upd)); total+=Object.keys(found).length; found={}; checked={}; }catch(_){} };
+  let i=0;
+  for(const [k,list] of authors){ i++;
     const name=String(list[0].author).replace(/\s+/g," ").trim();
     const orig=langName(list.map(b=>b.origLang).find(Boolean) || list.map(b=>b.lang).find(Boolean) || "");
     const want=orig==="Svenska"?["swe"]:orig==="Engelska"?["eng"]:["swe","eng"];
@@ -1200,12 +1204,12 @@ async function watchAuthors(){
       found[key]={key, author:name, title:t, year:fy||(first?+first.slice(0,4):Y), lang:want.length===1?langName(want[0]==="eng"?"Engelska":"Svenska"):(langs.includes("swe")?"Svenska":"Engelska"),
         langs:want.length>1?langs.map(l=>LC[l]).join(" och "):"", release:first>today?first:"", pages:w.number_of_pages_median||"", src:"Open Library"};
     }
-    await new Promise(r=>setTimeout(r,1000));
+    S.watchProgress={left:authors.length-i, total:authors.length};
+    if(i%8===0){ await save(); if(location.hash==="#stada") render(); }
+    await new Promise(r=>setTimeout(r,700));
   }
-  if(Object.keys(checked).length){
-    const upd={watchChecked:checked}; if(Object.keys(found).length) upd.watch=found;
-    try{ await queued("cleanState",()=>S.db.doc("lib/cleanState").update(upd)); const n=Object.keys(found).length; if(n){ render(); toast(n+(n===1?" ny bok":" nya böcker")+" av dina författare. Se Inkorgen."); } }catch(_){}
-  }
+  await save(); S.watchProgress=null; S.watchDone={authors:authors.length, found:total}; render();
+  if(authors.length) toast(total?total+(total===1?" ny bok":" nya böcker")+" av dina författare. Se Inkorgen.":"Bevakningen är klar: inga nya böcker i dag.");
   watchRun=false;
 }
 // Mark dead authors once, from Wikidata (free, runs in the browser). Only when every writer with that exact name has a date of death.
@@ -1645,7 +1649,7 @@ function cleanView(){
     if(x.key==="titles") return sec(x.key,x.title,x.books.length, x.books.length?`<p class="muted small" style="margin-top:0">Engelska titlar skrevs om till engelsk stil. Ångra de som blev fel.</p>`+x.books.map(b=>`<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><div class="grow"><b>${esc(b.title)}</b><div class="muted small">var: ${esc(b.titleOrig)}</div></div><button class="btn small" data-undotitle="${esc(b.id)}">Ångra</button></div>`).join(""):`<p class="muted small">Inga.</p>`);
     return sec(x.key,x.title,x.count, `<p class="muted small" style="margin-top:0">Här finns inget säkert förslag. Öppna boken och fyll i själv, eller tryck ✕ så visas den inte här igen.</p>`+bookList(x.books, x.key==="noname"?(b=>"#"+esc(firstNum(b.num))):x.key==="oddlang"?(b=>esc([b.lang,b.origLang].filter(Boolean).join(" / "))):x.key==="epub"?(b=>"Format: "+esc(b.format)):null, x.key));
   }).join("");
-  return `<h2 style="font-size:22px">Inkorg</h2>${S.gapProgress&&S.gapProgress.left?`<p class="muted small">Letar saknade delar i dina serier: ${S.gapProgress.left} serier kvar. Låt appen vara öppen.</p>`:""}${S.serProgress&&S.serProgress.left?`<p class="muted small">Letar serier i Wikidata medan appen är öppen: ${S.serProgress.left} böcker kvar att söka. Förslagen dyker upp här efter hand.</p>`:""}${noMoreSection()}${newBooksSection()}${backlogSection()}${authorPrefSection()}
+  return `<h2 style="font-size:22px">Inkorg</h2>${S.watchProgress&&S.watchProgress.left?`<p class="muted small">Bevakar dina Ja-författare i Open Library: ${S.watchProgress.left} av ${S.watchProgress.total} kvar. Förslagen dyker upp efter hand.</p>`:`<p class="small"><button class="btn small" data-act="watchnow">🔎 Sök nya böcker nu</button> ${S.watchDone?`<span class="muted">Senast: ${S.watchDone.authors} författare sökta, ${S.watchDone.found} nya.</span>`:""}</p>`}${S.gapProgress&&S.gapProgress.left?`<p class="muted small">Letar saknade delar i dina serier: ${S.gapProgress.left} serier kvar. Låt appen vara öppen.</p>`:""}${S.serProgress&&S.serProgress.left?`<p class="muted small">Letar serier i Wikidata medan appen är öppen: ${S.serProgress.left} böcker kvar att söka. Förslagen dyker upp här efter hand.</p>`:""}${noMoreSection()}${newBooksSection()}${backlogSection()}${authorPrefSection()}
   ${P.length?`<div class="notice row"><span class="grow">Jag har gjort <b>${P.length} förslag</b> utifrån det som redan finns i din lista. Gå igenom dem, ta bort bocken på dem som är fel och godkänn resten. Dubbletter måste du välja själv.</span><button class="btn primary" data-apply="all" ${active.length?"":"disabled"}>Genomför ${active.length}</button></div>`:(info?`<p class="muted">Inga förslag just nu.</p>`:"")}
   ${propSecs}
   ${info?`<h3 style="font-size:17px;margin-top:8px">Att titta på själv</h3>${info}`:(P.length||newBookList().length||backlogAsk().length||noMoreAsk().length||authorPrefList().length?"":`<p class="muted">Inkorgen är tom. ✨</p>`)}`;
@@ -2454,6 +2458,7 @@ document.addEventListener("click", async e=>{
         else reads.splice(+d.i,1);
         reads.sort((x,y)=>String(x.read).localeCompare(String(y.read)));
         if(await batchUpdate({[b.id]:{reads}})){ b.reads=reads; renderModal(); toast(d.act==="addread"?"Läsningen är tillagd.":"Läsningen är borttagen."); } return; }
+      case "watchnow": { if(watchRun){ toast("Bevakningen pågår redan."); return; } const cs=S.docs.cleanState||{}; if(cs.watchChecked) cs.watchChecked={}; watchAuthors(); toast("Bevakningen har startat."); return; }
       case "editmeta": { readForm(); S.editMeta=!S.editMeta; renderModal(); return; }
       case "useseries": { readForm(); const sr=seriesOf(S.edit); if(sr){ S.edit.series=sr.name; if(!S.edit.num && sr.num) S.edit.num=sr.num; } renderModal(); return; }
       case "usesugg": { readForm(); const sg=genreSuggest(S.edit); if(sg) S.edit.genres=sg.list.slice(); renderModal(); return; }
