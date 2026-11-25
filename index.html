@@ -1176,11 +1176,13 @@ const GR_GAPS={
 let watchRun=false;
 async function watchAuthors(){
   if(watchRun || !S.db || !S.loaded || S.isOwner===false) return; watchRun=true;
+  // Once a week: an author counts as checked if searched on or after this week's Monday.
   const cs=S.docs.cleanState||{}; const chk=cs.watchChecked3||{}; const today=todayISO(); const Y=+today.slice(0,4);
+  const mon=(()=>{ const d=new Date(today+"T12:00:00"); d.setDate(d.getDate()-((d.getDay()+6)%7)); return d.toISOString().slice(0,10); })();
   const yearAgo=new Date(Date.now()-365*864e5).toISOString().slice(0,10);
   const AM=authorMore(); const P=S.authorPref||{}; const byK={};
   S.books.forEach(b=>{ const k=authorKey(b.author); if(!k || noAuthor(b.author) || /[,;&]| och /.test(b.author)) return; (byK[k] ||= []).push(b); });
-  const authors=Object.entries(byK).filter(([k])=>AM[k]>=5 && (!P[k] || P[k]==="ja") && chk[k]!==today);
+  const authors=Object.entries(byK).filter(([k])=>AM[k]>=5 && (!P[k] || P[k]==="ja") && !(chk[k] && chk[k]>=mon));
   S.watchProgress={left:authors.length, total:authors.length}; if(location.hash==="#stada") render();
   const have=new Set([...S.books.map(b=>nbKey(b.title)), ...S.series.map(x=>nbKey(x.title))]);
   const SKIP=/\b(best of|collected|collection|complete|omnibus|box ?set|boxed|books? \d|trilogy|duology|stories|anthology|summary|study guide|graphic novel|colou?ring|journal|calendar|sampler|preview|excerpt|vol\.?|volume|edition|novellas?|essays?|edited|editor|sneak peek|teaser|first chapters?|chapter one|bonus|free preview|extract)\b/i;
@@ -1932,7 +1934,7 @@ function newBooksSection(){
   const l=newBookList(); if(!l.length) return "";
   const byA={}; l.forEach(n=>(byA[n.author] ||= []).push(n));
   return `<div class="card"><div class="sec-h"><h3>Nya böcker av dina författare</h3><span class="muted small">${l.length}</span></div>
-    <p class="muted small" style="margin-top:0">Lägg till det som lockar, säg nej tack till resten. Bevakningen söker i Open Library efter nya och kommande böcker av författare du svarat Ja på, en gång per dag när appen är öppen.</p>
+    <p class="muted small" style="margin-top:0">Lägg till det som lockar, säg nej tack till resten. Bevakningen söker i Open Library efter nya och kommande böcker av författare du svarat Ja på, en gång i veckan: första gången du öppnar appen från måndag.</p>
     ${Object.entries(byA).map(([a,list])=>`<div style="margin-top:10px"><b class="small">${esc(a)}</b>${list.map(n=>`<div style="padding:6px 0;border-bottom:1px solid var(--line)"><div class="row"><button type="button" class="alink grow" style="text-align:left" data-nbinfo="${esc(n.key)}" aria-expanded="${S.nbOpen===n.key}">${esc(n.title)} <span class="muted small">${n.release&&n.release>todayISO()?"släpps "+esc(fmtDate(n.release)):n.year}${n.langs?" · "+esc(n.langs):""} · ${S.nbOpen===n.key?"dölj":"mer info"}</span></button><button class="chip" data-addnew="${esc(n.key)}">+ Lägg till</button><button class="chip" data-ignore="${esc(n.key)}">✕ Nej tack</button></div>${S.nbOpen===n.key?nbInfoHtml(n):""}</div>`).join("")}</div>`).join("")}</div>`;
 }
 // Details for a suggested book, from Open Library (free, no key). Cached per session.
