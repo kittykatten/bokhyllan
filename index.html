@@ -1172,7 +1172,7 @@ function libraryView(){
 
 /* --- clean-up --- */
 function splitAuthor(a){
-  a=String(a||"").trim().replace(/\s+/g," "); if(!a || / och | and |&|\//i.test(a)) return null;
+  a=String(a||"").trim().replace(/\s+/g," ").replace(/\s*;\s*/g,", "); if(!a || / och | and |&|\//i.test(a)) return null;
   if(a.includes(",")){ const [l,f]=a.split(",").map(x=>x.trim()); if(!f || (l.includes(" ") && f.includes(" ")) || f.split(" ").length>2) return null; return {last:l, init:(f||"").charAt(0)}; }
   const p=a.split(" "); if(p.length<2) return null; return {last:p[p.length-1], init:p[0].charAt(0)};
 }
@@ -1254,10 +1254,11 @@ function cleanProposals(){
   });
   // Author names as "Förnamn Efternamn": use a full form already in the list, else Open Library.
   const covered=new Set(out.filter(p=>p.group==="authors").flatMap(p=>Object.keys(p.patches)));
-  const full={}; S.books.forEach(b=>{ const a=String(b.author||"").replace(/\s+/g," ").trim(); if(a.includes(",")) return; const sa=splitAuthor(a); if(sa && a.split(" ")[0].replace(/\./g,"").length>1) full[norm(sa.last).split(" ").pop()+"|"+sa.init.toLowerCase()]=a; });
+  const full={}; S.books.forEach(b=>{ const a=String(b.author||"").replace(/\s+/g," ").trim(); if(/[,;]/.test(a)) return; const sa=splitAuthor(a); if(sa && a.split(" ")[0].replace(/\./g,"").length>1) full[norm(sa.last).split(" ").pop()+"|"+sa.init.toLowerCase()]=a; });
+  Object.values(S.authorFix||{}).forEach(a=>{ const sa=splitAuthor(a); if(!sa) return; const k=norm(sa.last).split(" ").pop()+"|"+sa.init.toLowerCase(); if(!full[k]) full[k]=a; });
   const nameGroups={};
   S.books.forEach(b=>{ if(covered.has(b.id)) return; const a=String(b.author||"").trim(); const single=!a.includes(" ") && a.length>1 && a!=="(red)";
-    const sa=a.includes(",")?splitAuthor(a):null; if(!sa && !single) return;
+    const sa=/[,;]/.test(a)?splitAuthor(a):null; if(!sa && !single) return;
     const target=(sa && full[norm(sa.last).split(" ").pop()+"|"+sa.init.toLowerCase()]) || (S.authorFix||{})[b.id];
     if(target && target!==a){ const k=a+"→"+target; (nameGroups[k] ||= {from:a,to:target,ids:[]}).ids.push(b.id); } });
   Object.values(nameGroups).forEach((g,i)=>{ const patches={}; g.ids.forEach(id=>patches[id]={author:g.to}); out.push({id:"nm"+i, key:"p:nm:"+g.from+"→"+g.to, group:"names", title:g.to, detail:"ersätter “"+g.from+"” · "+g.ids.length+(g.ids.length>1?" böcker":" bok"), patches}); });
