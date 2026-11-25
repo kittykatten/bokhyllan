@@ -1344,7 +1344,7 @@ function authorView(){
   const avg=rated.length?rated.reduce((s,b)=>s+ ratingOf(b),0)/rated.length:0;
   const more=authorMore()[key];
   const chip=(v,l,n)=>`<button class="chip" data-af="${v}" aria-pressed="${f===v}">${l}<span class="n">${n}</span></button>`;
-  return `<div class="row"><button class="btn" data-act="authback">← Tillbaka</button></div>
+  return `<div class="row"><button class="btn" data-act="authback">← Tillbaka</button><span class="grow"></span><button class="btn" data-act="authrename" title="Byt namn på författaren i alla böcker">✎ Byt namn</button></div>
   <h2 style="font-size:26px">${esc(name)}</h2>
   <div class="tiles">
     <div class="tile"><div class="v">${all.length}</div><div class="l">böcker i listan</div></div>
@@ -1354,6 +1354,18 @@ function authorView(){
   </div>
   <div class="chips">${chip("","Alla",all.length)}${chip("unread","Olästa",all.filter(b=>["tbr","reading"].includes(phase(b))).length)}${chip("read","Lästa",read.length)}${chip("dnf","Bortvalda",all.filter(b=>phase(b)==="dnf").length)}</div>
   ${list.length?`<div class="list">${list.map(bookRow).join("")}</div>`:`<div class="empty">Inga böcker här.</div>`}`;
+}
+
+async function renameAuthor(){
+  const name=S.authorName; if(!name) return; const key=authorKey(name);
+  const ids=S.books.filter(b=>authorKey(b.author)===key).map(b=>b.id);
+  const to=(prompt(`Nytt namn för ${name} (${ids.length} ${ids.length===1?"bok":"böcker"}):`, name)||"").replace(/\s+/g," ").trim();
+  if(!to || to===name) return;
+  const patches={}; ids.forEach(id=>patches[id]={author:to});
+  if(!await batchUpdate(patches)) return;
+  const P=S.authorPref||{}, nk=authorKey(to);
+  if(P[key] && !P[nk]){ try{ await queued("authors",()=>S.db.doc("lib/authors").update({pref:{[nk]:P[key]}})); S.authorPref={...P, [nk]:P[key]}; }catch(e){ dbFail(e); } }
+  S.authorName=to; render(); toast(`Bytte namn till ${to} i ${ids.length} ${ids.length===1?"bok":"böcker"}.`);
 }
 
 /* --- book editor --- */
@@ -2086,6 +2098,7 @@ document.addEventListener("click", async e=>{
       case "import": runImport(); return;
       case "more": S.f.limit+=300; render(); return;
       case "new": openBook(null); return;
+      case "authrename": renameAuthor(); return;
       case "authback": location.hash=(S.authorBack&&S.authorBack!=="#forfattare")?S.authorBack:"#bocker"; return;
       case "editmeta": { readForm(); S.editMeta=!S.editMeta; renderModal(); return; }
       case "useseries": { readForm(); const sr=seriesOf(S.edit); if(sr){ S.edit.series=sr.name; if(!S.edit.num && sr.num) S.edit.num=sr.num; } renderModal(); return; }
