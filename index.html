@@ -2313,13 +2313,13 @@ function hnView(P){
   return `<div class="tiles"><div class="tile"><div class="v">${wr} / ${wins.length}</div><div class="l">${NAME[P]}-vinnare lästa</div></div>
     <div class="tile"><div class="v">${mine.filter(isRead).length} / ${mine.length}</div><div class="l">nominerade och vinnare lästa</div></div></div>
   <div class="row"><input type="search" id="awQ" placeholder="Sök titel eller författare …" value="${esc(S.awQ)}" aria-label="Sök">
-    <select id="awForm" aria-label="Form"><option value="">Romaner och kortromaner</option><option value="novel" ${form==="novel"?"selected":""}>Bara romaner</option><option value="novella" ${form==="novella"?"selected":""}>Bara kortromaner</option></select>
+    <select id="awForm" aria-label="Form"><option value="">Romaner och noveller</option><option value="novel" ${form==="novel"?"selected":""}>Bara romaner</option><option value="novella" ${form==="novella"?"selected":""}>Bara noveller</option></select>
     ${awYearSelect(mine.map(a=>a[P+"Year"]))}</div>
   <div class="chips">${chip("winners","Vinnare")}${chip("unread","Olästa vinnare")}${chip("all","Alla nominerade")}${chip("both","Vann båda")}${chip("bothnom","Nominerad till båda")}</div>
   <div id="results" style="display:flex;flex-direction:column;gap:16px"><p class="muted small" style="margin:0">${list.length} böcker${list.length>300?", de 300 senaste visas":""}</p>
   ${list.length?`<div class="list">${list.slice(0,300).map(a=>{ const b=findBook(a.title); return `<div class="item" ${b?`data-book="${esc(b.id)}" role="button" tabindex="0"`:`style="cursor:default"`}>
     <span class="stripe ${isRead(a)?"ph-read":"ph-tbr"}"></span>${coverHtml(b||{title:a.title})}
-    <div><div class="t">${esc(a.title)}</div><div class="a">${authorLink(a.author)}${a.novella?" · kortroman":""}</div>
+    <div><div class="t">${esc(a.title)}</div><div class="a">${authorLink(a.author)}${a.novella?" · novell":""}</div>
       <div class="row" style="margin-top:4px;gap:6px">${badge(a,P)}${badge(a,O,true)}</div></div>
     <div class="r">${isRead(a)?`<span class="pill ph-read">Läst</span>`:b?`<span class="pill ph-tbr">På listan</span>`:""}</div></div>`; }).join("")}</div>`:`<div class="empty">Inget matchar.</div>`}</div>
   <p class="muted small">Nya års nominerade och vinnare hämtas från Wikidata en gång i månaden.</p>`;
