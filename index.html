@@ -1175,7 +1175,7 @@ async function watchAuthors(){
   const authors=Object.entries(byK).filter(([k])=>AM[k]>=5 && (!P[k] || P[k]==="ja") && chk[k]!==today);
   S.watchProgress={left:authors.length, total:authors.length}; if(location.hash==="#stada") render();
   const have=new Set([...S.books.map(b=>nbKey(b.title)), ...S.series.map(x=>nbKey(x.title))]);
-  const SKIP=/\b(best of|collected|collection|complete|omnibus|box ?set|boxed|books? \d|trilogy|duology|stories|anthology|summary|study guide|graphic novel|colou?ring|journal|calendar|sampler|preview|excerpt|vol\.?|volume|edition|novellas?|essays?|edited|editor)\b/i;
+  const SKIP=/\b(best of|collected|collection|complete|omnibus|box ?set|boxed|books? \d|trilogy|duology|stories|anthology|summary|study guide|graphic novel|colou?ring|journal|calendar|sampler|preview|excerpt|vol\.?|volume|edition|novellas?|essays?|edited|editor|sneak peek|teaser|first chapters?|chapter one|bonus|free preview|extract)\b/i;
   const SKIPSUBJ=/comic|graphic novel|short stor|antholog|novella|poetry|juvenile|picture book/i;
   const LC={eng:"engelska", swe:"svenska"};
   let found={}, checked={}, total=0;
@@ -1193,7 +1193,7 @@ async function watchAuthors(){
       if(new Set((w.author_name||[]).map(authorKey)).size>=3) continue;     // anthologies: Open Library lists the editors as authors
       if(w.subtitle && SKIP.test(w.subtitle)) continue;
       const fy=+w.first_publish_year||0; if(fy && fy<Y-1) continue;
-      const t=stripNovel(String(w.title||"").trim()); if(!t || SKIP.test(t) || have.has(nbKey(t))) continue;
+      const t=stripNovel(String(w.title||"").trim()); if(!t || SKIP.test(t) || have.has(nbKey(t)) || !titleLangOk(t,want)) continue;
       if(w.number_of_pages_median && w.number_of_pages_median<120) continue;
       if((w.subject||[]).some(x=>SKIPSUBJ.test(x))) continue;
       const dates=(w.publish_date||[]).map(x=>{ const ms=Date.parse(x); return /\d{1,2},? \d{4}|\d{4}-\d{2}-\d{2}/.test(x)&&!isNaN(ms)?new Date(ms+12*36e5).toISOString().slice(0,10):""; }).filter(Boolean).sort();
@@ -1812,6 +1812,19 @@ const NEW_BOOKS=[
  ["Amal El-Mohtar","Seasons of Glass and Iron",2026],
  ["Annalee Newitz","Stories Are Weapons",2024],
 ];
+// Does the title look like it is in one of the wanted languages? Open Library sometimes files a translation under
+// the original's languages ("La señora astronauta de Marte", "Moi przyjaciele").
+function titleLangOk(t, want){
+  t=" "+String(t||"").toLowerCase()+" ";
+  const foreignChars=/[ñ¿¡ąćęłńśźżãõçßøæœìòùâêîôûëïÿčřšžőűăşţ]/;
+  const sweChars=/[åäö]/, engOnly=!want.includes("swe");
+  const FOREIGN=/ (el|los|las|del|una|uno|y|der|die|das|und|ein|eine|le|les|des|du|une|et|il|della|delle|gli|di|och|och|moi|moja|mój|dla|na|się|nie|o|em|do|da|dos|das) /;
+  const SWE=/ (och|en|ett|det|den|av|på|för|med|som|till|från|är|om|i) /;
+  if(foreignChars.test(t)) return false;
+  if(engOnly){ if(sweChars.test(t) || /[éèáíóú]/.test(t)) return false; return !FOREIGN.test(t.replace(/ och /g," ")) ; }
+  if(!want.includes("eng")){ if(/ (the|of|and|my|your|an|in|to|with|for|from|is|at|on|a) /.test(t)) return false; return !FOREIGN.test(t.replace(/ (och|i|om|en|av|på|med) /g," ")); }
+  return !FOREIGN.test(t.replace(/ (och|i|om|en|av|på|med|den|det) /g," "));
+}
 // "The Sirens: A Novel" → "The Sirens". Publisher tags, not part of the title.
 function stripNovel(t){ return String(t||"").replace(/\s*[:\-–—(]\s*(a|an)\s+(novel|thriller|mystery|memoir|novella|romance|love story|fantasy|horror novel|ghost story|story)\)?\s*$/i,"").trim(); }
 function nbKey(t){ return norm(stripNovel(t).replace(/&/g," and ")).replace(/^(the|a|an) /,""); }
@@ -1820,7 +1833,8 @@ function newBookList(){
   const W=Object.values((S.docs.cleanState&&S.docs.cleanState.watch2)||{}).filter(Boolean);
   const fixed=NEW_BOOKS.map(([author,title,year,lang])=>({author,title,year,lang:lang||"Engelska",key:"p:new:"+norm(author)+"|"+norm(title)}));
   const seen=new Set(fixed.map(n=>n.key));
-  return fixed.concat(W.filter(n=>!seen.has(n.key) && !isDeadAuthor(n.author) && !/^we will rise again$/i.test(n.title)).map(n=>({...n, title:stripNovel(n.title)})))
+  return fixed.concat(W.filter(n=>!seen.has(n.key) && !isDeadAuthor(n.author) && !/^we will rise again$/i.test(n.title) && !/\b(sneak peek|teaser|preview|sampler|excerpt)\b/i.test(n.title)
+      && titleLangOk(n.title, n.langs?["swe","eng"]:n.lang==="Svenska"?["swe"]:["eng"])).map(n=>({...n, title:stripNovel(n.title)})))
     .filter(n=>!IG[n.key] && !IG["p:new:"+norm(n.author)+"|"+norm(n.title.replace(/&/g,"and"))] && !have.has(nbKey(n.title)));
 }
 // Books that were already over 2 years on 2026-11-24 were decided on in the sheet; only ask about books that pass 2 years after that.
