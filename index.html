@@ -246,7 +246,7 @@ const S = {
   books:[], series:[], awards:[], plans:{}, meta:null,
   f:{q:"", phase:"", status:"", kind:"", sort:"title", limit:150, ser:"", auth:"", avail:false, libby:false, nextSer:false, genre:"", lang:"", maxPages:"", gender:""},
   serQ:"", serFilter:"open", awQ:"", awFilter:"winners", planKey:null,
-  importing:null, covers:new Set(), ol:{}, enrichDone:false, gc:[], awSrc:"hn", gcCat:"",
+  importing:null, covers:new Set(), ol:{}, enrichDone:false, gc:[], awSrc:"h", gcCat:"",
   next:{avail:true, genre:"", lang:"", maxPages:"", kind:"", gender:"", series:false, sort:"plan", auth:""}, pickId:null,
   planYear:null
 };
@@ -649,7 +649,7 @@ function rebuild(){
     if(!target) continue;
     for(const [k,v] of Object.entries(items)) if(v) target.push({...v, id:k, _doc:id});
   }
-  S.books=books; S.series=series; S.awards=awards; S.gc=gcl;
+  S.books=books; S.series=series; S.awards=mergeAwards(awards, (S.docs.cleanState&&S.docs.cleanState.awardsWd)||{}); S.gc=gcl;
   S.plans=(S.docs.plans && S.docs.plans.months) || {};
   S.meta=S.docs.meta || null;
   S.libs=(S.docs.libraries && S.docs.libraries.list) || [];
@@ -1174,6 +1174,32 @@ const GR_GAPS={
 // Coming books and books first published in the last 12 months. Authors who write in Swedish or English: only that
 // language. Other original languages: Swedish or English editions. Each author is checked at most once a day.
 let watchRun=false;
+// Hugo and Nebula (novel and novella) from Wikidata, to keep the list from the sheet up to date. Once a month.
+const AWARD_Q={h:{novel:"Q255032", novella:"Q549884"}, n:{novel:"Q266012", novella:"Q1086189"}};
+function mergeAwards(list, wd){
+  const by={}; list.forEach(a=>by[norm(a.title)]=a);
+  Object.values(wd||{}).forEach(x=>{ if(!x||!x.title) return; const k=norm(x.title); let a=by[k];
+    if(!a){ a={id:"wd:"+k, title:x.title, author:x.author, novel:!!x.novel, novella:!!x.novella}; list.push(a); by[k]=a; }
+    for(const p of ["h","n"]){ if(x[p+"Nom"]||x[p+"Win"]){ if(!a[p+"Year"]) a[p+"Year"]=x[p+"Year"]; if(x[p+"Nom"]) a[p+"Nom"]=true; if(x[p+"Win"]){ a[p+"Win"]=true; a[p+"Nom"]=true; } } } });
+  return list;
+}
+let awardRun=false;
+async function findAwards(){
+  if(awardRun || !S.db || !S.loaded || S.isOwner===false) return;
+  const cs=S.docs.cleanState||{}; const last=cs.awardsChecked||""; if(last && (Date.parse(todayISO())-Date.parse(last))/864e5<30) return;
+  awardRun=true;
+  const sheetYears=S.awards.filter(a=>!String(a.id||"").startsWith("wd:")).flatMap(a=>[+a.hYear||0,+a.nYear||0]); const from=Math.max(2000,...sheetYears);   // the sheet's latest year and newer
+  const out={}; let ok=0;
+  for(const p of ["h","n"]) for(const [form,qid] of Object.entries(AWARD_Q[p])) for(const [prop,kind] of [["P166","Win"],["P1411","Nom"]]){
+    const q=`SELECT ?w ?wLabel ?aLabel ?d WHERE { ?w p:${prop} ?s . ?s ps:${prop} wd:${qid} . ?s pq:P585 ?d . ?w wdt:P50 ?a . SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }`;
+    let d; try{ d=await fetchJson("https://query.wikidata.org/sparql?format=json&query="+encodeURIComponent(q)); ok++; }catch(_){ continue; }
+    for(const r of d.results.bindings){ const y=+String(r.d.value).slice(0,4); if(y<from) continue; const t=r.wLabel.value; if(/^Q\d+$/.test(t)) continue;
+      const k=norm(t); const e=(out[k] ||= {title:t, author:/^Q\d+$/.test(r.aLabel.value)?"":r.aLabel.value}); e[form]=true; e[p+"Year"]=String(y); e[p+kind]=true; if(kind==="Win") e[p+"Nom"]=true; }
+    await new Promise(r=>setTimeout(r,1000));
+  }
+  if(ok>=6){ try{ await queued("cleanState",()=>S.db.doc("lib/cleanState").update({awardsChecked:todayISO(), awardsWd:out})); }catch(_){} }
+  awardRun=false;
+}
 async function watchAuthors(manual){
   if(watchRun || !S.db || !S.loaded || S.isOwner===false) return; watchRun=true;
   // Once a week: an author counts as checked if searched on or after this week's Monday.
@@ -2235,8 +2261,9 @@ function seriesView(){
 
 /* --- awards --- */
 function awardsView(){
-  const sw=`<div class="chips"><button class="chip" data-awsrc="hn" aria-pressed="${S.awSrc==="hn"}">Hugo &amp; Nebula</button><button class="chip" data-awsrc="gc" aria-pressed="${S.awSrc==="gc"}">Goodreads Choice</button></div>`;
-  return sw + (S.awSrc==="gc"?gcView():hnView());
+  const src=S.awSrc==="hn"?"h":S.awSrc;
+  const sw=`<div class="chips"><button class="chip" data-awsrc="h" aria-pressed="${src==="h"}">Hugo</button><button class="chip" data-awsrc="n" aria-pressed="${src==="n"}">Nebula</button><button class="chip" data-awsrc="gc" aria-pressed="${src==="gc"}">Goodreads Choice</button></div>`;
+  return sw + (src==="gc"?gcView():hnView(src));
 }
 function gcView(){
   if(!S.gc.length) return `<div class="card"><p style="margin-top:0">Goodreads Choice finns inte i appen än. Den hämtas från fliken Goodreads Choice i arket. Bara den listan läses, inget annat ändras.</p>
@@ -2263,28 +2290,34 @@ function gcView(){
     <div class="r">${g.winner?`<span class="pill ph-read">Vinnare ${esc(g.year)}</span>`:`<span class="pill ph-tbr">Nominerad ${esc(g.year)}</span>`}${isRead(g)?`<span class="pill ph-read">Läst</span>`:""}</div></div>`; }).join("")}</div>`:`<div class="empty">Inget matchar.</div>`}</div>
 `;
 }
-function hnView(){
-  const q=norm(S.awQ); const f=S.awFilter;
+function hnView(P){
+  // One prize at a time (P = "h" Hugo or "n" Nebula); the other prize is shown as a small badge so overlap is visible.
+  const O=P==="h"?"n":"h", NAME={h:"Hugo",n:"Nebula"};
+  const q=norm(S.awQ); const f=S.awFilter||"winners";
   const readTitles=new Set(S.books.filter(everRead).map(b=>norm(b.title)));
   const isRead=a=>a.read||readTitles.has(norm(a.title));
-  let list=S.awards.filter(a=>!q||norm(a.title+" "+a.author).includes(q));
-  if(f==="winners") list=list.filter(a=>a.hWin||a.nWin);
-  if(f==="both") list=list.filter(a=>a.hWin&&a.nWin);
-  if(f==="unread") list=list.filter(a=>(a.hWin||a.nWin)&&!isRead(a));
-  list.sort((a,b)=>(+(b.hYear||b.nYear)||0)-(+(a.hYear||a.nYear)||0));
-  const wins=S.awards.filter(a=>a.hWin||a.nWin); const wr=wins.filter(isRead).length;
+  const nom=(a,p)=>!!(a[p+"Nom"]||a[p+"Win"]), win=(a,p)=>!!a[p+"Win"];
+  const mine=S.awards.filter(a=>nom(a,P));
+  let list=mine.filter(a=>!q||norm(a.title+" "+a.author).includes(q));
+  if(f==="winners") list=list.filter(a=>win(a,P));
+  if(f==="unread") list=list.filter(a=>win(a,P)&&!isRead(a));
+  if(f==="both") list=list.filter(a=>win(a,P)&&win(a,O));
+  if(f==="bothnom") list=list.filter(a=>nom(a,O));
+  list.sort((a,b)=>(+b[P+"Year"]||0)-(+a[P+"Year"]||0) || String(a.title).localeCompare(String(b.title),"sv"));
+  const wins=mine.filter(a=>win(a,P)); const wr=wins.filter(isRead).length;
   const chip=(v,l)=>`<button class="chip" data-aw="${v}" aria-pressed="${f===v}">${l}</button>`;
-  const badge=(nom,win,y,name)=> win?`<span class="pill ph-read">${name} vinnare ${esc(y)}</span>`: nom?`<span class="pill ph-tbr">${name} nominerad ${esc(y)}</span>`:"";
-  return `<div class="tiles"><div class="tile"><div class="v">${wr} / ${wins.length}</div><div class="l">vinnare lästa</div></div>
-    <div class="tile"><div class="v">${S.awards.filter(isRead).length}</div><div class="l">nominerade och vinnare lästa</div></div></div>
+  const badge=(a,p,small)=> win(a,p)?`<span class="pill ph-read"${small?' style="opacity:.75"':""}>${NAME[p]} vinnare ${esc(a[p+"Year"]||"")}</span>`: nom(a,p)?`<span class="pill ph-tbr"${small?' style="opacity:.75"':""}>${NAME[p]} nominerad ${esc(a[p+"Year"]||"")}</span>`:"";
+  return `<div class="tiles"><div class="tile"><div class="v">${wr} / ${wins.length}</div><div class="l">${NAME[P]}-vinnare lästa</div></div>
+    <div class="tile"><div class="v">${mine.filter(isRead).length} / ${mine.length}</div><div class="l">nominerade och vinnare lästa</div></div></div>
   <div class="row"><input type="search" id="awQ" placeholder="Sök titel eller författare …" value="${esc(S.awQ)}" aria-label="Sök"></div>
-  <div class="chips">${chip("winners","Vinnare")}${chip("both","Vann båda")}${chip("unread","Olästa vinnare")}${chip("all","Alla nominerade")}</div>
+  <div class="chips">${chip("winners","Vinnare")}${chip("unread","Olästa vinnare")}${chip("all","Alla nominerade")}${chip("both","Vann båda")}${chip("bothnom","Nominerad till båda")}</div>
   <div id="results" style="display:flex;flex-direction:column;gap:16px"><p class="muted small" style="margin:0">${list.length} böcker${list.length>300?", de 300 senaste visas":""}</p>
   ${list.length?`<div class="list">${list.slice(0,300).map(a=>{ const b=findBook(a.title); return `<div class="item" ${b?`data-book="${esc(b.id)}" role="button" tabindex="0"`:`style="cursor:default"`}>
     <span class="stripe ${isRead(a)?"ph-read":"ph-tbr"}"></span>${coverHtml(b||{title:a.title})}
-    <div><div class="t">${esc(a.title)}</div><div class="a">${authorLink(a.author)}${a.novella?" · novell":""}</div>
-      <div class="row" style="margin-top:4px;gap:6px">${badge(a.hNom,a.hWin,a.hYear,"Hugo")}${badge(a.nNom,a.nWin,a.nYear,"Nebula")}</div></div>
-    <div class="r">${isRead(a)?`<span class="pill ph-read">Läst</span>`:""}</div></div>`; }).join("")}</div>`:`<div class="empty">Inget matchar.</div>`}</div>`;
+    <div><div class="t">${esc(a.title)}</div><div class="a">${authorLink(a.author)}${a.novella?" · kortroman":""}</div>
+      <div class="row" style="margin-top:4px;gap:6px">${badge(a,P)}${badge(a,O,true)}</div></div>
+    <div class="r">${isRead(a)?`<span class="pill ph-read">Läst</span>`:b?`<span class="pill ph-tbr">På listan</span>`:""}</div></div>`; }).join("")}</div>`:`<div class="empty">Inget matchar.</div>`}</div>
+  <p class="muted small">Nya års nominerade och vinnare hämtas från Wikidata en gång i månaden.</p>`;
 }
 
 /* --- next book --- */
@@ -2601,7 +2634,7 @@ function startData(){
     S.docs=docs; rebuild();
     if(!snap.metadata.fromCache){ S.loaded=true; clearTimeout(timer); }
     else if(Object.keys(docs).length) S.loaded=true;
-    if(S.loaded){ maybeEnrich(); setTimeout(findCovers, 4000); setTimeout(findSeries, 9000); setTimeout(findPages, 15000); setTimeout(findDeadAuthors, 6000); setTimeout(findFullNames, 3000); setTimeout(findSeriesGaps, 5000); setTimeout(watchAuthors, 7000); }
+    if(S.loaded){ maybeEnrich(); setTimeout(findCovers, 4000); setTimeout(findSeries, 9000); setTimeout(findPages, 15000); setTimeout(findDeadAuthors, 6000); setTimeout(findFullNames, 3000); setTimeout(findSeriesGaps, 5000); setTimeout(watchAuthors, 7000); setTimeout(findAwards, 12000); }
     if(S.edit && S.edit.id){ const fresh=S.books.find(b=>b.id===S.edit.id); if(fresh) S.edit._doc=fresh._doc; }
     render();
   }, err=>{ clearTimeout(timer); S.loaded=true; S.error="Kunde inte läsa databasen ("+((err&&err.code)||"fel")+")."; render(); });
