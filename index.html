@@ -1019,6 +1019,28 @@ async function wikidataSeries(b){
   return r?{name:r.sLabel.value, num:r.ord?r.ord.value:""}:null;
 }
 let seriesRun=false;
+// Names written "Efternamn I" (e.g. "Power R", "Power, R."): look up the book's title on Open Library and use the full name
+// whose surname and first initial match. Tried once per book.
+let fullNameRun=false;
+async function findFullNames(){
+  if(fullNameRun || !S.db || !S.loaded || S.isOwner===false) return; fullNameRun=true;
+  const RE=/^([A-ZÅÄÖ][^,;]*?)[,;]?\s+([A-ZÅÄÖ])\.?$/;
+  const groups={}; S.books.forEach(b=>{ const a=String(b.author||"").replace(/\s+/g," ").trim(); if(!RE.test(a) || b.nameTried) return; (groups[a] ||= []).push(b); });
+  const patches={}, done=[];
+  for(const [a,list] of Object.entries(groups).slice(0,25)){
+    const [,sur,ini]=a.match(RE); let found="";
+    for(const b of list.slice(0,3)){
+      let d; try{ d=await fetchJson("https://openlibrary.org/search.json?fields=author_name&limit=10&title="+encodeURIComponent(b.title)+"&author="+encodeURIComponent(sur)); }catch(_){ fullNameRun=false; return; }
+      for(const doc of d.docs||[]) for(const n of doc.author_name||[]){ const p=n.replace(/\s+/g," ").trim().split(" ");
+        if(p.length>=2 && norm(p.slice(1).join(" ")).endsWith(norm(sur)) && p[0].charAt(0).toUpperCase()===ini && p[0].replace(/\./g,"").length>1){ found=n.replace(/\s+/g," ").trim(); break; } }
+      if(found) break; await new Promise(r=>setTimeout(r,800));
+    }
+    list.forEach(b=>patches[b.id]=found?{author:found}:{nameTried:true});
+    if(found) done.push(a+" → "+found);
+  }
+  if(Object.keys(patches).length && await batchUpdate(patches) && done.length) toast("Rättade författarnamn: "+done.join(", "));
+  fullNameRun=false;
+}
 // Mark dead authors once, from Wikidata (free, runs in the browser). Only when every writer with that exact name has a date of death.
 let deadRun=false;
 async function findDeadAuthors(){
@@ -2235,7 +2257,7 @@ function startData(){
     S.docs=docs; rebuild();
     if(!snap.metadata.fromCache){ S.loaded=true; clearTimeout(timer); }
     else if(Object.keys(docs).length) S.loaded=true;
-    if(S.loaded){ maybeEnrich(); setTimeout(findCovers, 4000); setTimeout(findSeries, 9000); setTimeout(findPages, 15000); setTimeout(findDeadAuthors, 6000); }
+    if(S.loaded){ maybeEnrich(); setTimeout(findCovers, 4000); setTimeout(findSeries, 9000); setTimeout(findPages, 15000); setTimeout(findDeadAuthors, 6000); setTimeout(findFullNames, 3000); }
     if(S.edit && S.edit.id){ const fresh=S.books.find(b=>b.id===S.edit.id); if(fresh) S.edit._doc=fresh._doc; }
     render();
   }, err=>{ clearTimeout(timer); S.loaded=true; S.error="Kunde inte läsa databasen ("+((err&&err.code)||"fel")+")."; render(); });
