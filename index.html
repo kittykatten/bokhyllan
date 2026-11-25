@@ -369,6 +369,9 @@ function listEstimate(){
 }
 // Author preference: your direct answer (Inkorg) first, then the latest rating-form answer from Nov 2026 on overrides it. 10+ read = yes.
 const PREF_VAL={ja:5,kanske:3,nej:1};
+// "avliden": no new books will come. Not a score, so it never triggers questions about books left on the list.
+const PREF_LABEL={ja:"Ja",kanske:"Kanske",nej:"Nej",avliden:"Avliden"};
+function isDeadAuthor(name){ const k=authorKey(name); return (S.authorPref||{})[k]==="avliden"; }
 function authorMore(){
   const m={}; const cnt={};
   S.books.forEach(b=>{ if(phase(b)==="read") cnt[authorKey(b.author)]=(cnt[authorKey(b.author)]||0)+1; });
@@ -551,6 +554,7 @@ function rebuild(){
   S.libs=(S.docs.libraries && S.docs.libraries.list) || [];
   S.abandoned=(S.docs.seriesState && S.docs.seriesState.abandoned) || {};
   S.authorPref=(S.docs.authors && S.docs.authors.pref) || {};
+  S.authorDead=(S.docs.authors && S.docs.authors.dead) || {}; S.deadChecked=(S.docs.authors && S.docs.authors.checked) || {};
   S.ignoreDups=(S.docs.cleanState && S.docs.cleanState.ignoreDups) || {};
   const ig=(S.docs.cleanState && S.docs.cleanState.ignore) || {};
   if(JSON.stringify(ig)!==JSON.stringify(S.cleanIgnore||{})){ S.cleanIgnore=ig; cleanIssues._r=null; cleanProposals._r=null; }
@@ -1006,6 +1010,32 @@ async function wikidataSeries(b){
   return r?{name:r.sLabel.value, num:r.ord?r.ord.value:""}:null;
 }
 let seriesRun=false;
+// Mark dead authors once, from Wikidata (free, runs in the browser). Only when every writer with that exact name has a date of death.
+let deadRun=false;
+async function findDeadAuthors(){
+  if(deadRun || !S.db || !S.loaded || S.isOwner===false) return; deadRun=true;
+  const P=S.authorPref||{}, C=S.deadChecked||{}; const names={};
+  S.books.forEach(b=>{ const a=String(b.author||"").replace(/\s+/g," ").trim(); const k=authorKey(a);
+    if(!a || (P[k] && P[k]!=="nej") || C[k] || / och | and |&|\/|[,;]|\(/i.test(a) || !a.includes(" ")) return; names[k]=a; });
+  const todo=Object.entries(names).slice(0,120);
+  const WRITER="wd:Q36180 wd:Q6625963 wd:Q49757 wd:Q4853732 wd:Q482980 wd:Q18844224 wd:Q1930187 wd:Q214917 wd:Q11774202 wd:Q201788 wd:Q333634 wd:Q15949613 wd:Q3589290 wd:Q1350157 wd:Q5434338";
+  const dead={}, checked={}, pref={};
+  for(let i=0;i<todo.length;i+=20){
+    const part=todo.slice(i,i+20);
+    const vals=part.flatMap(([,a])=>["mul","en","sv"].map(l=>JSON.stringify(a)+"@"+l)).join(" ");
+    const q=`SELECT ?name ?item ?dod WHERE { VALUES ?name { ${vals} } ?item rdfs:label ?name; wdt:P31 wd:Q5; wdt:P106 ?o. VALUES ?o { ${WRITER} } OPTIONAL { ?item wdt:P570 ?dod } }`;
+    let d; try{ d=await fetchJson("https://query.wikidata.org/sparql?format=json&query="+encodeURIComponent(q)); }catch(_){ break; }
+    const by={}; d.results.bindings.forEach(r=>{ const k=authorKey(r.name.value); const e=(by[k] ||= {}); e[r.item.value]=r.dod?r.dod.value.slice(0,4):(e[r.item.value]||""); });
+    part.forEach(([k])=>{ checked[k]=true; const ys=Object.values(by[k]||{}); if(ys.length && ys.every(Boolean)){ dead[k]=ys[0]; pref[k]="avliden"; } });
+    await new Promise(res=>setTimeout(res,1100));
+  }
+  if(Object.keys(checked).length){
+    try{ await queued("authors",()=>S.db.doc("lib/authors").update(Object.keys(dead).length?{checked, dead, pref}:{checked}));
+      S.deadChecked={...C,...checked}; S.authorDead={...(S.authorDead||{}),...dead}; S.authorPref={...(S.authorPref||{}),...pref};
+      const n=Object.keys(dead).length; if(n){ render(); toast(n+(n===1?" författare markerad":" författare markerade")+" som avliden (Wikidata)."); } }catch(_){}
+  }
+  deadRun=false;
+}
 async function findSeries(){
   if(seriesRun || !S.db || !S.loaded) return; seriesRun=true;
   const need=b=>!seriesOf(b) && !b.seriesTried && b.title && b.author && phase(b)!=="dnf";
@@ -1354,8 +1384,9 @@ function authorView(){
     <div class="tile"><div class="v">${all.length}</div><div class="l">böcker i listan</div></div>
     <div class="tile"><div class="v">${read.length}</div><div class="l">lästa</div></div>
     <div class="tile"><div class="v">${avg?fmtRating(avg):"–"}</div><div class="l">snittbetyg${rated.length?" ("+rated.length+" betygsatta)":""}</div></div>
-    <div class="tile"><div class="v" style="font-size:22px">${more?esc(MORE_LABELS[more]):"–"}</div><div class="l">läsa mer av författaren?</div></div>
+    <div class="tile"><div class="v" style="font-size:22px">${(S.authorPref||{})[key]==="avliden"?"Avliden":more?esc(MORE_LABELS[more]):"–"}</div><div class="l">${(S.authorPref||{})[key]==="avliden"?((S.authorDead||{})[key]?"död "+esc((S.authorDead||{})[key])+" · ":"")+"inga nya böcker":"läsa mer av författaren?"}</div></div>
   </div>
+  <div class="chips"><span class="muted small" style="align-self:center">Läsa mer?</span>${["ja","kanske","nej","avliden"].map(v=>`<button class="chip" data-apref="${v}" data-k="${esc(key)}" aria-pressed="${(S.authorPref||{})[key]===v}">${PREF_LABEL[v]}</button>`).join("")}</div>
   <div class="chips">${chip("","Alla",all.length)}${chip("unread","Olästa",all.filter(b=>["tbr","reading"].includes(phase(b))).length)}${chip("read","Lästa",read.length)}${chip("dnf","Bortvalda",all.filter(b=>phase(b)==="dnf").length)}</div>
   ${list.length?`<div class="list">${list.map(bookRow).join("")}</div>`:`<div class="empty">Inga böcker här.</div>`}`;
 }
@@ -1537,8 +1568,8 @@ function authorPrefList(){
 function authorPrefSection(){
   const l=authorPrefList(); if(!l.length) return "";
   return `<div class="card"><div class="sec-h"><h3>Vill du läsa mer av de här författarna?</h3><span class="muted small">${l.length} kvar</span></div>
-    <p class="muted small" style="margin-top:0">Författare du läst 1–9 böcker av, flest först. Ja lyfter dem i Bäst förslag först. Nej gör att Inkorgen frågar om deras böcker som ligger kvar på listan.</p>
-    ${l.slice(0,15).map(([k,e])=>`<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><div class="grow">${authorLink(e.name)} <span class="muted small">${e.read} lästa${e.left?" · "+e.left+" på listan":""}</span></div>${["ja","kanske","nej"].map(v=>`<button class="chip" data-apref="${v}" data-k="${esc(k)}">${v==="ja"?"Ja":v==="nej"?"Nej":"Kanske"}</button>`).join("")}</div>`).join("")}
+    <p class="muted small" style="margin-top:0">Författare du läst 1–9 böcker av, flest först. Ja lyfter dem i Bäst förslag först. Nej gör att Inkorgen frågar om deras böcker som ligger kvar på listan. Avliden betyder bara att inga nya böcker kommer: böckerna på listan påverkas inte. Appen markerar avlidna författare själv med hjälp av Wikidata.</p>
+    ${l.slice(0,15).map(([k,e])=>`<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><div class="grow">${authorLink(e.name)} <span class="muted small">${e.read} lästa${e.left?" · "+e.left+" på listan":""}</span></div>${["ja","kanske","nej","avliden"].map(v=>`<button class="chip" data-apref="${v}" data-k="${esc(k)}">${PREF_LABEL[v]}</button>`).join("")}</div>`).join("")}
     ${l.length>15?`<p class="muted small" style="margin-bottom:0">Nästa 15 visas när du svarat på de här.</p>`:""}</div>`;
 }
 async function setAuthorPref(k,v){
@@ -2191,7 +2222,7 @@ function startData(){
     S.docs=docs; rebuild();
     if(!snap.metadata.fromCache){ S.loaded=true; clearTimeout(timer); }
     else if(Object.keys(docs).length) S.loaded=true;
-    if(S.loaded){ maybeEnrich(); setTimeout(findCovers, 4000); setTimeout(findSeries, 9000); setTimeout(findPages, 15000); }
+    if(S.loaded){ maybeEnrich(); setTimeout(findCovers, 4000); setTimeout(findSeries, 9000); setTimeout(findPages, 15000); setTimeout(findDeadAuthors, 6000); }
     if(S.edit && S.edit.id){ const fresh=S.books.find(b=>b.id===S.edit.id); if(fresh) S.edit._doc=fresh._doc; }
     render();
   }, err=>{ clearTimeout(timer); S.loaded=true; S.error="Kunde inte läsa databasen ("+((err&&err.code)||"fel")+")."; render(); });
