@@ -1174,7 +1174,7 @@ const GR_GAPS={
 // Coming books and books first published in the last 12 months. Authors who write in Swedish or English: only that
 // language. Other original languages: Swedish or English editions. Each author is checked at most once a day.
 let watchRun=false;
-async function watchAuthors(){
+async function watchAuthors(manual){
   if(watchRun || !S.db || !S.loaded || S.isOwner===false) return; watchRun=true;
   // Once a week: an author counts as checked if searched on or after this week's Monday.
   const cs=S.docs.cleanState||{}; const chk=cs.watchChecked3||{}; const today=todayISO(); const Y=+today.slice(0,4);
@@ -1182,14 +1182,15 @@ async function watchAuthors(){
   const yearAgo=new Date(Date.now()-365*864e5).toISOString().slice(0,10);
   const AM=authorMore(); const P=S.authorPref||{}; const byK={};
   S.books.forEach(b=>{ const k=authorKey(b.author); if(!k || noAuthor(b.author) || /[,;&]| och /.test(b.author)) return; (byK[k] ||= []).push(b); });
-  const authors=Object.entries(byK).filter(([k])=>AM[k]>=5 && (!P[k] || P[k]==="ja") && !(chk[k] && chk[k]>=mon));
+  const authors=Object.entries(byK).filter(([k])=>AM[k]>=5 && (!P[k] || P[k]==="ja") && (manual || !(chk[k] && chk[k]>=mon)));
   S.watchProgress={left:authors.length, total:authors.length}; if(location.hash==="#stada") render();
   const have=new Set([...S.books.map(b=>nbKey(b.title)), ...S.series.map(x=>nbKey(x.title))]);
   const SKIP=/\b(best of|collected|collection|complete|omnibus|box ?set|boxed|books? \d|trilogy|duology|stories|anthology|summary|study guide|graphic novel|colou?ring|journal|calendar|sampler|preview|excerpt|vol\.?|volume|edition|novellas?|essays?|edited|editor|sneak peek|teaser|first chapters?|chapter one|bonus|free preview|extract)\b/i;
   const SKIPSUBJ=/comic|graphic novel|short stor|antholog|novella|poetry|juvenile|picture book/i;
   const LC={eng:"engelska", swe:"svenska"};
   let found={}, checked={}, total=0;
-  const save=async()=>{ if(!Object.keys(checked).length) return; const upd={watchChecked3:checked}; if(Object.keys(found).length) upd.watch3=found;
+  // A manual search ("Sök nya böcker nu") saves what it finds but does not count as this week's automatic search.
+  const save=async()=>{ if(!Object.keys(checked).length) return; const upd=manual?{}:{watchChecked3:checked}; if(Object.keys(found).length) upd.watch3=found; if(!Object.keys(upd).length){ checked={}; return; }
     try{ await queued("cleanState",()=>S.db.doc("lib/cleanState").update(upd)); total+=Object.keys(found).length; found={}; checked={}; }catch(_){} };
   let i=0, fails=0;
   for(const [k,list] of authors){ i++;
@@ -2507,7 +2508,7 @@ document.addEventListener("click", async e=>{
         else reads.splice(+d.i,1);
         reads.sort((x,y)=>String(x.read).localeCompare(String(y.read)));
         if(await batchUpdate({[b.id]:{reads}})){ b.reads=reads; renderModal(); toast(d.act==="addread"?"Läsningen är tillagd.":"Läsningen är borttagen."); } return; }
-      case "watchnow": { if(watchRun){ toast("Bevakningen pågår redan."); return; } const cs=S.docs.cleanState||{}; if(cs.watchChecked3) cs.watchChecked3={}; watchAuthors(); toast("Bevakningen har startat."); return; }
+      case "watchnow": { if(watchRun){ toast("Bevakningen pågår redan."); return; } watchAuthors(true); toast("Sökningen har startat."); return; }
       case "editmeta": { readForm(); S.editMeta=!S.editMeta; renderModal(); return; }
       case "useseries": { readForm(); const sr=seriesOf(S.edit); if(sr){ S.edit.series=sr.name; if(!S.edit.num && sr.num) S.edit.num=sr.num; } renderModal(); return; }
       case "usesugg": { readForm(); const sg=genreSuggest(S.edit); if(sg) S.edit.genres=sg.list.slice(); renderModal(); return; }
