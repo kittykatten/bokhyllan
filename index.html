@@ -1168,7 +1168,7 @@ const GR_GAPS={
 let watchRun=false;
 async function watchAuthors(){
   if(watchRun || !S.db || !S.loaded || S.isOwner===false) return; watchRun=true;
-  const cs=S.docs.cleanState||{}; const chk=cs.watchChecked||{}; const today=todayISO(); const Y=+today.slice(0,4);
+  const cs=S.docs.cleanState||{}; const chk=cs.watchChecked2||{}; const today=todayISO(); const Y=+today.slice(0,4);
   const yearAgo=new Date(Date.now()-365*864e5).toISOString().slice(0,10);
   const AM=authorMore(); const P=S.authorPref||{}; const byK={};
   S.books.forEach(b=>{ const k=authorKey(b.author); if(!k || noAuthor(b.author) || /[,;&]| och /.test(b.author)) return; (byK[k] ||= []).push(b); });
@@ -1179,7 +1179,7 @@ async function watchAuthors(){
   const SKIPSUBJ=/comic|graphic novel|short stor|antholog|novella|poetry|juvenile|picture book/i;
   const LC={eng:"engelska", swe:"svenska"};
   let found={}, checked={}, total=0;
-  const save=async()=>{ if(!Object.keys(checked).length) return; const upd={watchChecked:checked}; if(Object.keys(found).length) upd.watch=found;
+  const save=async()=>{ if(!Object.keys(checked).length) return; const upd={watchChecked2:checked}; if(Object.keys(found).length) upd.watch2=found;
     try{ await queued("cleanState",()=>S.db.doc("lib/cleanState").update(upd)); total+=Object.keys(found).length; found={}; checked={}; }catch(_){} };
   let i=0, fails=0;
   for(const [k,list] of authors){ i++;
@@ -1200,6 +1200,10 @@ async function watchAuthors(){
       const langs=(w.language||[]).filter(l=>want.includes(l));
       if((w.language||[]).length && !langs.length) continue;
       if(!(w.language||[]).length && want.length>1) continue;     // unknown language for a translated author: skip
+      // Reissues: Open Library sometimes lists a new edition as a new work. Skip if the title exists from an earlier year.
+      try{ const o=await fetchJson("https://openlibrary.org/search.json?title="+encodeURIComponent(t)+"&author="+encodeURIComponent(name)+"&fields=title,first_publish_year,publish_year&limit=10");
+        const older=(o.docs||[]).filter(x=>nbKey(x.title)===nbKey(t)).flatMap(x=>[+x.first_publish_year||9999, ...(x.publish_year||[]).map(Number)]).some(y=>y && y<Y-1);
+        if(older) continue; }catch(_){}
       const key="p:new:"+norm(name)+"|"+norm(t);
       found[key]={key, author:name, title:t, year:fy||(first?+first.slice(0,4):Y), lang:want.length===1?langName(want[0]==="eng"?"Engelska":"Svenska"):(langs.includes("swe")?"Svenska":"Engelska"),
         langs:want.length>1?langs.map(l=>LC[l]).join(" och "):"", release:first>today?first:"", pages:w.number_of_pages_median||"", src:"Open Library"};
@@ -1805,7 +1809,7 @@ const NEW_BOOKS=[
 function nbKey(t){ return norm(String(t).replace(/&/g," and ")).replace(/^(the|a|an) /,""); }
 function newBookList(){
   const IG=S.cleanIgnore||{}; const have=new Set([...S.books.map(b=>nbKey(b.title)), ...S.series.map(x=>nbKey(x.title))]);
-  const W=Object.values((S.docs.cleanState&&S.docs.cleanState.watch)||{}).filter(Boolean);
+  const W=Object.values((S.docs.cleanState&&S.docs.cleanState.watch2)||{}).filter(Boolean);
   const fixed=NEW_BOOKS.map(([author,title,year,lang])=>({author,title,year,lang:lang||"Engelska",key:"p:new:"+norm(author)+"|"+norm(title)}));
   const seen=new Set(fixed.map(n=>n.key));
   return fixed.concat(W.filter(n=>!seen.has(n.key) && !isDeadAuthor(n.author)))
@@ -2458,7 +2462,7 @@ document.addEventListener("click", async e=>{
         else reads.splice(+d.i,1);
         reads.sort((x,y)=>String(x.read).localeCompare(String(y.read)));
         if(await batchUpdate({[b.id]:{reads}})){ b.reads=reads; renderModal(); toast(d.act==="addread"?"Läsningen är tillagd.":"Läsningen är borttagen."); } return; }
-      case "watchnow": { if(watchRun){ toast("Bevakningen pågår redan."); return; } const cs=S.docs.cleanState||{}; if(cs.watchChecked) cs.watchChecked={}; watchAuthors(); toast("Bevakningen har startat."); return; }
+      case "watchnow": { if(watchRun){ toast("Bevakningen pågår redan."); return; } const cs=S.docs.cleanState||{}; if(cs.watchChecked2) cs.watchChecked2={}; watchAuthors(); toast("Bevakningen har startat."); return; }
       case "editmeta": { readForm(); S.editMeta=!S.editMeta; renderModal(); return; }
       case "useseries": { readForm(); const sr=seriesOf(S.edit); if(sr){ S.edit.series=sr.name; if(!S.edit.num && sr.num) S.edit.num=sr.num; } renderModal(); return; }
       case "usesugg": { readForm(); const sg=genreSuggest(S.edit); if(sg) S.edit.genres=sg.list.slice(); renderModal(); return; }
