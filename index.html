@@ -1124,7 +1124,7 @@ async function findSeries(){
 let gapRun=false;
 async function findSeriesGaps(){
   if(gapRun || !S.db || !S.loaded || S.isOwner===false) return; gapRun=true;
-  const cs=S.docs.cleanState||{}; const chk=cs.serChecked3||{}; const today=todayISO();
+  const cs=S.docs.cleanState||{}; const chk=cs.serChecked4||{}; const today=todayISO();
   const old=d=>!d || (Date.parse(today)-Date.parse(d))/864e5>30;
   const groups=seriesGroups().filter(g=>!isAbandoned(g.name) && old(chk[g.name.toLowerCase()])).slice(0,24);
   const checked={}, gaps={};
@@ -1134,6 +1134,7 @@ async function findSeriesGaps(){
     const vals=Object.keys(varOf).length?part.flatMap(g=>seriesNameVariants(g.name).flatMap(v=>["en","sv","mul"].map(l=>JSON.stringify(v)+"@"+l))).join(" "):"";
     const q=`SELECT ?name ?m ?ord ?date ?parts ?te ?ts ?al WHERE { VALUES ?name { ${vals} }
       FILTER NOT EXISTS { ?m wdt:P31 ?tv . VALUES ?tv { wd:Q21191270 wd:Q3464665 wd:Q5398426 wd:Q11424 wd:Q7889 wd:Q24862 wd:Q1259759 wd:Q838795 wd:Q25379 } }
+      FILTER NOT EXISTS { ?m wdt:P31|wdt:P7937|wdt:P136 ?ss . VALUES ?ss { wd:Q49084 wd:Q1279564 wd:Q105420 wd:Q1095389 wd:Q149537 wd:Q5185279 wd:Q35760 wd:Q725377 wd:Q1004 wd:Q8274 wd:Q7725310 } }
       { ?s rdfs:label ?name . ?st ps:P179 ?s . ?m p:P179 ?st . OPTIONAL { ?st pq:P1545 ?ord } OPTIONAL { ?s wdt:P1114 ?parts } }
       OPTIONAL { ?m wdt:P577 ?date } OPTIONAL { ?m rdfs:label ?te FILTER(LANG(?te)="en") } OPTIONAL { ?m rdfs:label ?ts FILTER(LANG(?ts)="sv") }
       OPTIONAL { ?m wdt:P50 ?a . ?a rdfs:label ?al FILTER(LANG(?al)="en") } }`;
@@ -1150,7 +1151,7 @@ async function findSeriesGaps(){
         if(r.te) e.te=r.te.value; if(r.ts) e.ts=r.ts.value; if(r.parts) parts=Math.max(parts,+r.parts.value||0); });
       const byT={}; Object.values(mem).filter(e=>e.te||e.ts).forEach(e=>{ const k=norm(e.te||e.ts); const o=byT[k];
         if(!o || (!o.num && e.num) || (!!o.num===!!e.num && String(e.date||"")>String(o.date||""))) byT[k]=e; });
-      let list=Object.values(byT);
+      let list=Object.values(byT); if(list.some(e=>e.num)) list=list.filter(e=>e.num && /^\d+$/.test(e.num));
       if(list.some(e=>!e.num)){ list.sort((a,b)=>String(a.date||"9").localeCompare(String(b.date||"9"))); list.forEach((e,ix)=>{ if(!e.num) e.num=String(ix+1); }); }
       const haveT=new Set(g.items.flatMap(it=>[norm(it.title), norm(String(it.title).split(":")[0])]));
       const haveN=new Set(g.items.map(it=>String(it.num||"")).filter(Boolean));
@@ -1164,7 +1165,7 @@ async function findSeriesGaps(){
     await new Promise(r=>setTimeout(r,1100));
   }
   if(Object.keys(checked).length){
-    const upd={serChecked3:checked}; if(Object.keys(gaps).length) upd.serGaps3=gaps;
+    const upd={serChecked4:checked}; if(Object.keys(gaps).length) upd.serGaps4=gaps;
     try{ await queued("cleanState",()=>S.db.doc("lib/cleanState").update(upd)); cleanProposals._r=null;
       const n=Object.keys(gaps).length; if(n){ render(); toast(n+(n===1?" bok":" böcker")+" saknas i dina serier. Se Inkorgen."); } }catch(_){}
   }
@@ -1419,7 +1420,7 @@ function cleanProposals(){
   Object.values(nameGroups).forEach((g,i)=>{ const patches={}; g.ids.forEach(id=>patches[id]={author:g.to}); out.push({id:"nm"+i, key:"p:nm:"+g.from+"→"+g.to, group:"names", title:g.to, detail:"ersätter “"+g.from+"” · "+g.ids.length+(g.ids.length>1?" böcker":" bok"), patches}); });
   S.books.filter(b=>b.wdSeries && !seriesOf(b) && !b.notSeries && (b.wdSeries.src==="P179" || !b.seriesTried2)).forEach(b=>{ const w=b.wdSeries; const nm=fixSeriesName(w.name,b.lang);
     out.push({id:"wd"+b.id, key:"p:wd:"+b.id, group:"wdseries", title:b.title, detail:`${nm}${(b.num||w.num)?" #"+firstNum(b.num||w.num):""} (Wikidata)`, patches:{[b.id]:{series:nm, num:firstNum(b.num||w.num||"")}}, bookId:b.id}); });
-  { const SG={...GR_GAPS, ...((S.docs.cleanState&&S.docs.cleanState.serGaps3)||{})}; const grp={}; seriesGroups().forEach(g=>grp[g.name.toLowerCase()]=g);
+  { const SG={...GR_GAPS, ...((S.docs.cleanState&&S.docs.cleanState.serGaps4)||{})}; const grp={}; seriesGroups().forEach(g=>grp[g.name.toLowerCase()]=g);
     const grNum=new Set(Object.values(GR_GAPS).map(x=>norm(x.series)+"|"+x.num));
     Object.entries(SG).forEach(([k,x])=>{ if(!x || isAbandoned(x.series)) return; if(!GR_GAPS[k] && grNum.has(norm(x.series)+"|"+x.num)) return; const g=grp[String(x.series).toLowerCase()]; if(g && x.title!=="?" && g.items.some(it=>norm(it.title)===norm(x.title))) return;
       if(g && x.title==="?" && g.items.some(it=>String(it.num)===String(x.num))) return;
