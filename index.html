@@ -1587,7 +1587,7 @@ async function backlogAct(kind,id){
 // When a rating says 1–2 on "read more by this author", ask about that author's unread books.
 function noMoreAsk(){
   const AM=authorMore(); const IG=S.cleanIgnore||{}; const out={};
-  S.books.filter(b=>phase(b)==="tbr" && AM[authorKey(b.author)]<=2 && !IG["p:nomore:"+b.id]).forEach(b=>{ (out[b.author] ||= []).push(b); });
+  S.books.filter(b=>phase(b)==="tbr" && !b.ownPick && AM[authorKey(b.author)]<=2 && !IG["p:nomore:"+b.id]).forEach(b=>{ (out[b.author] ||= []).push(b); });
   return Object.entries(out);
 }
 function noMoreSection(){
@@ -1602,12 +1602,25 @@ function authorPrefList(){
   S.books.forEach(b=>{ const k=authorKey(b.author); if(!k) return; const p=phase(b); const e=(by[k] ||= {name:String(b.author).replace(/\s+/g," ").trim(), read:0, left:0}); if(p==="read") e.read++; else if(p==="tbr"||p==="reading") e.left++; });
   return Object.entries(by).filter(([k,e])=>e.read>0 && e.read<10 && !P[k]).sort((a,b)=>b[1].read-a[1].read||a[1].name.localeCompare(b[1].name,"sv"));
 }
+function authorStats(){
+  const by={};
+  S.books.forEach(b=>{ const k=authorKey(b.author); if(!k) return; const p=phase(b); const e=(by[k] ||= {name:String(b.author).replace(/\s+/g," ").trim(), read:0, left:0}); if(p==="read") e.read++; else if(p==="tbr"||p==="reading") e.left++; });
+  return by;
+}
+function authorPrefRow(k,e,cur){
+  return `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><div class="grow">${authorLink(e.name)} <span class="muted small">${e.read} lästa${e.left?" · "+e.left+" på listan":""}</span></div>${["ja","kanske","nej","vetej","avliden"].map(v=>`<button class="chip" data-apref="${v}" data-k="${esc(k)}" aria-pressed="${cur===v}">${PREF_LABEL[v]}</button>`).join("")}</div>`;
+}
 function authorPrefSection(){
-  const l=authorPrefList(); if(!l.length) return "";
+  const l=authorPrefList(); const P=S.authorPref||{}; const st=authorStats(); const rv=S.prefReview||"";
+  const cnt={}; Object.entries(P).forEach(([k,v])=>{ if(st[k] && PREF_LABEL[v]) cnt[v]=(cnt[v]||0)+1; });
+  if(!l.length && !Object.keys(cnt).length) return "";
+  const review=rv?Object.entries(P).filter(([k,v])=>v===rv && st[k]).map(([k])=>[k,st[k]]).sort((a,b)=>b[1].read-a[1].read||a[1].name.localeCompare(b[1].name,"sv")):[];
   return `<div class="card"><div class="sec-h"><h3>Vill du läsa mer av de här författarna?</h3><span class="muted small">${l.length} kvar</span></div>
-    <p class="muted small" style="margin-top:0">Författare du läst 1–9 böcker av, flest först. Ja lyfter dem i Bäst förslag först. Nej gör att Inkorgen frågar om deras böcker som ligger kvar på listan. Vet ej är för dem du inte minns: de räknas varken upp eller ner och du får inte frågan igen. Avliden betyder bara att inga nya böcker kommer: böckerna på listan påverkas inte. Appen markerar avlidna författare själv med hjälp av Wikidata.</p>
-    ${l.slice(0,15).map(([k,e])=>`<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><div class="grow">${authorLink(e.name)} <span class="muted small">${e.read} lästa${e.left?" · "+e.left+" på listan":""}</span></div>${["ja","kanske","nej","vetej","avliden"].map(v=>`<button class="chip" data-apref="${v}" data-k="${esc(k)}">${PREF_LABEL[v]}</button>`).join("")}</div>`).join("")}
-    ${l.length>15?`<p class="muted small" style="margin-bottom:0">Nästa 15 visas när du svarat på de här.</p>`:""}</div>`;
+    <p class="muted small" style="margin-top:0">Författare du läst 1–9 böcker av, flest först. Ja lyfter dem i Bäst förslag först. Nej gör att Inkorgen frågar om deras böcker som ligger kvar på listan. Vet ej är för dem du inte minns: de räknas varken upp eller ner och du får inte frågan igen. Avliden betyder bara att inga nya böcker kommer: böckerna på listan påverkas inte. Appen markerar avlidna författare själv med hjälp av Wikidata. Böcker du själv lägger till påverkas aldrig av svaret.</p>
+    ${l.slice(0,15).map(([k,e])=>authorPrefRow(k,e,"")).join("")}
+    ${l.length>15?`<p class="muted small" style="margin-bottom:0">Nästa 15 visas när du svarat på de här.</p>`:""}
+    ${Object.keys(cnt).length?`<div class="chips" style="margin-top:10px"><span class="muted small" style="align-self:center">Gå igenom igen:</span>${["kanske","vetej","nej","ja","avliden"].filter(v=>cnt[v]).map(v=>`<button class="chip" data-prefreview="${v}" aria-pressed="${rv===v}">${PREF_LABEL[v]}<span class="n">${cnt[v]}</span></button>`).join("")}</div>`:""}
+    ${rv?(review.length?review.map(([k,e])=>authorPrefRow(k,e,rv)).join(""):`<p class="muted small">Inga kvar med ${PREF_LABEL[rv]}.</p>`):""}</div>`;
 }
 async function setAuthorPref(k,v){
   try{ await queued("authors",()=>S.db.doc("lib/authors").update({pref:{[k]:v}})); S.authorPref={...(S.authorPref||{}), [k]:v}; render(); }catch(e){ dbFail(e); }
@@ -1710,6 +1723,7 @@ async function saveBook(close=true){
   const item={...b}; delete item.id; delete item._doc; delete item.plan;
   const planTo=b.plan; const planFrom=b.id?planOf(S.books.find(x=>x.id===b.id)||b):"";
   for(const k of ["gender","lang","origLang","series","num","status","source","format","added","started","read","due","comment","year","pages","libby","loaned","release"]) if(item[k]==null) item[k]="";
+  if(!b.id){ const k=authorKey(item.author); const pv=(S.authorPref||{})[k]; if(["nej","vetej","avliden"].includes(pv) || authorMore()[k]<=2) item.ownPick=true; }
   item.rating=+item.rating||0; item.extra=item.extra||{}; item.genres=item.genres||[]; item.ratingForm=item.ratingForm||{}; item.moreAuthor=+item.moreAuthor||0; item.num=firstNum(item.num);
   { const a=String(item.added||""); if(/^\d{4}-\d{2}-\d{2}$/.test(a) && a>todayISO() && !item.release) item.release=a; }
   if(/^\d{4}-\d{2}-\d{2}$/.test(String(item.release||""))){ if(!item.year) item.year=+item.release.slice(0,4); if(!item.read && !item.started) item.added=item.release; }
@@ -1990,13 +2004,13 @@ function nextView(){
   list=list.filter(b=>{ const sr=seriesOf(b); return !(sr && isAbandoned(sr.name)); });
   const AM=authorMore();
   if(n.auth==="more") list=list.filter(b=>AM[authorKey(b.author)]>=4);
-  if(n.auth==="hide") list=list.filter(b=>!(AM[authorKey(b.author)]<=2));
+  if(n.auth==="hide") list=list.filter(b=>b.ownPick || !(AM[authorKey(b.author)]<=2));
   const why=b=>{ const r=[]; if(planT.has(norm(b.title))) r.push("I planen för "+MON_SV_LONG[new Date().getMonth()]);
     if(serNext[norm(b.title)]) r.push("Nästa i "+serNext[norm(b.title)]);
     if(b.reread) r.push("Läsa om");
     if(AVAILABLE.includes(b.status)) r.push(b.status); else if(b.status) r.push(b.status);
     if(b.libby==="ja") r.push("Finns i Libby"); else if(b.libby==="notify") r.push("🔔 Notify i Libby"); return r; };
-  const score=b=>(planT.has(norm(b.title))?100:0)+(serNext[norm(b.title)]?50:0)+(AVAILABLE.includes(b.status)?20:0)+(b.libby==="ja"?10:0)+((AM[authorKey(b.author)]||3)-3)*10;
+  const score=b=>(planT.has(norm(b.title))?100:0)+(serNext[norm(b.title)]?50:0)+(AVAILABLE.includes(b.status)?20:0)+(b.libby==="ja"?10:0)+(b.ownPick?0:((AM[authorKey(b.author)]||3)-3)*10);
   const sorts={plan:(a,b)=>score(b)-score(a)||String(a.added).localeCompare(String(b.added)), short:(a,b)=>(+a.pages||9999)-(+b.pages||9999), old:(a,b)=>String(a.added||"9").localeCompare(String(b.added||"9")), new:(a,b)=>(+b.year||0)-(+a.year||0)};
   list.sort(sorts[n.sort]||sorts.plan);
   if(S.pickId){ const i=list.findIndex(b=>b.id===S.pickId); if(i>0) list.unshift(list.splice(i,1)[0]); }
@@ -2123,7 +2137,7 @@ document.addEventListener("keydown", e=>{
   if((e.key==="Enter"||e.key===" ") && e.target.matches("[role=button][data-drill],[role=button][data-book],[role=button][data-planadd],[role=button][data-planmonth],[role=button][data-seropen],[role=button][data-cleanopen],[role=button][data-pickfound]")){ e.preventDefault(); e.target.click(); }
 });
 document.addEventListener("click", async e=>{
-  const t=e.target.closest("[data-act],[data-phase],[data-book],[data-rate],[data-scope],[data-ser],[data-serread],[data-aw],[data-plan],[data-planrm],[data-planadd],[data-q],[data-genre],[data-awsrc],[data-ng],[data-planmonth],[data-py],[data-more],[data-author],[data-af],[data-seropen],[data-cleanopen],[data-fixauthor],[data-undotitle],[data-libsave],[data-libretire],[data-abandon],[data-apply],[data-skip],[data-gotoseries],[data-dupch],[data-pickfound],[data-ignore],[data-dropf],[data-addnew],[data-drill],[data-nbinfo],[data-bl],[data-nomore],[data-apref]");
+  const t=e.target.closest("[data-act],[data-phase],[data-book],[data-rate],[data-scope],[data-ser],[data-serread],[data-aw],[data-plan],[data-planrm],[data-planadd],[data-q],[data-genre],[data-awsrc],[data-ng],[data-planmonth],[data-py],[data-more],[data-author],[data-af],[data-seropen],[data-cleanopen],[data-fixauthor],[data-undotitle],[data-libsave],[data-libretire],[data-abandon],[data-apply],[data-skip],[data-gotoseries],[data-dupch],[data-pickfound],[data-ignore],[data-dropf],[data-addnew],[data-drill],[data-nbinfo],[data-bl],[data-nomore],[data-apref],[data-prefreview]");
   if(!t) return;
   const d=t.dataset;
   if(d.act==="close-bg" && e.target!==t) return;
@@ -2144,6 +2158,7 @@ document.addEventListener("click", async e=>{
   if(d.pickfound!=null){ pickFound(+d.pickfound); return; }
   if(d.dupch){ S.dupChoice={...(S.dupChoice||{})}; S.dupChoice[d.dupch] = S.dupChoice[d.dupch]===d.v ? undefined : d.v; if(!S.dupChoice[d.dupch]) delete S.dupChoice[d.dupch]; render(); return; }
   if(d.apref){ await setAuthorPref(d.k, d.apref); return; }
+  if(d.prefreview){ S.prefReview=S.prefReview===d.prefreview?"":d.prefreview; render(); return; }
   if(d.nomore){ const ids=d.ids.split(",").filter(Boolean); const patches={}; ids.forEach(id=>patches[id]={dropped:{date:todayISO(), reason:"Lockar inte längre"}});
     if(await batchUpdate(patches)){ for(const id of ids){ const b=S.books.find(x=>x.id===id); if(b){ try{ await movePlan(b.title,""); }catch(_){} } } toast(ids.length>1?ids.length+" böcker flyttade till Bortvalda.":"Flyttad till Bortvalda."); } return; }
   if(d.bl){ await backlogAct(d.bl, d.id); return; }
