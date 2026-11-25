@@ -2272,7 +2272,7 @@ function gcView(){
   const isRead=g=>!!g.read||readT.has(norm(g.title));
   const cats=[...new Set(S.gc.map(g=>g.category).filter(Boolean))].sort();
   const q=norm(S.awQ); const f=S.awFilter;
-  let list=S.gc.filter(g=>(!S.gcCat||g.category===S.gcCat)&&(!q||norm(g.title+" "+g.author).includes(q)));
+  let list=S.gc.filter(g=>(!S.gcCat||g.category===S.gcCat)&&(!S.awYear||String(g.year)===S.awYear)&&(!q||norm(g.title+" "+g.author).includes(q)));
   if(f==="winners"||f==="both") list=list.filter(g=>g.winner);
   if(f==="unread") list=list.filter(g=>g.winner&&!isRead(g)&&!/no thanks/i.test(g.comment||""));
   list.sort((a,b)=>(+b.year||0)-(+a.year||0) || (b.votes||0)-(a.votes||0));
@@ -2281,7 +2281,7 @@ function gcView(){
   return `<div class="tiles"><div class="tile"><div class="v">${wins.filter(isRead).length} / ${wins.length}</div><div class="l">vinnare lästa</div></div>
     <div class="tile"><div class="v">${S.gc.filter(isRead).length} / ${S.gc.length}</div><div class="l">av hela listan lästa</div></div></div>
   <div class="row"><input type="search" id="awQ" placeholder="Sök titel eller författare …" value="${esc(S.awQ)}" aria-label="Sök">
-    <select id="gcCat" aria-label="Kategori"><option value="">Alla kategorier</option>${cats.map(c=>`<option ${S.gcCat===c?"selected":""} value="${esc(c)}">${esc(GC_GENRE[c.toLowerCase()]||c)}</option>`).join("")}</select></div>
+    <select id="gcCat" aria-label="Kategori"><option value="">Alla kategorier</option>${cats.map(c=>`<option ${S.gcCat===c?"selected":""} value="${esc(c)}">${esc(GC_GENRE[c.toLowerCase()]||c)}</option>`).join("")}</select>${awYearSelect(S.gc.map(g=>g.year))}</div>
   <div class="chips">${chip("winners","Vinnare")}${chip("unread","Olästa vinnare")}${chip("all","Hela listan")}</div>
   <div id="results">${list.length?`<div class="list">${list.map(g=>{ const b=findBook(g.title); return `<div class="item" ${b?`data-book="${esc(b.id)}" role="button" tabindex="0"`:`style="cursor:default"`}>
     <span class="stripe ${isRead(g)?"ph-read":"ph-tbr"}"></span>${coverHtml(b||{title:g.title})}
@@ -2290,6 +2290,8 @@ function gcView(){
     <div class="r">${g.winner?`<span class="pill ph-read">Vinnare ${esc(g.year)}</span>`:`<span class="pill ph-tbr">Nominerad ${esc(g.year)}</span>`}${isRead(g)?`<span class="pill ph-read">Läst</span>`:""}</div></div>`; }).join("")}</div>`:`<div class="empty">Inget matchar.</div>`}</div>
 `;
 }
+function awYearSelect(years){ const ys=[...new Set(years.map(y=>String(y||"").trim()).filter(y=>/^\d{4}$/.test(y)))].sort().reverse();
+  return `<select id="awYear" aria-label="År"><option value="">Alla år</option>${ys.map(y=>`<option ${S.awYear===y?"selected":""}>${y}</option>`).join("")}</select>`; }
 function hnView(P){
   // One prize at a time (P = "h" Hugo or "n" Nebula); the other prize is shown as a small badge so overlap is visible.
   const O=P==="h"?"n":"h", NAME={h:"Hugo",n:"Nebula"};
@@ -2298,7 +2300,8 @@ function hnView(P){
   const isRead=a=>a.read||readTitles.has(norm(a.title));
   const nom=(a,p)=>!!(a[p+"Nom"]||a[p+"Win"]), win=(a,p)=>!!a[p+"Win"];
   const mine=S.awards.filter(a=>nom(a,P));
-  let list=mine.filter(a=>!q||norm(a.title+" "+a.author).includes(q));
+  const isNovella=a=>!!a.novella && !a.novel; const form=S.awForm||"";
+  let list=mine.filter(a=>(!q||norm(a.title+" "+a.author).includes(q)) && (!S.awYear||String(a[P+"Year"])===S.awYear) && (!form || (form==="novella")===isNovella(a)));
   if(f==="winners") list=list.filter(a=>win(a,P));
   if(f==="unread") list=list.filter(a=>win(a,P)&&!isRead(a));
   if(f==="both") list=list.filter(a=>win(a,P)&&win(a,O));
@@ -2309,7 +2312,9 @@ function hnView(P){
   const badge=(a,p,small)=> win(a,p)?`<span class="pill ph-read"${small?' style="opacity:.75"':""}>${NAME[p]} vinnare ${esc(a[p+"Year"]||"")}</span>`: nom(a,p)?`<span class="pill ph-tbr"${small?' style="opacity:.75"':""}>${NAME[p]} nominerad ${esc(a[p+"Year"]||"")}</span>`:"";
   return `<div class="tiles"><div class="tile"><div class="v">${wr} / ${wins.length}</div><div class="l">${NAME[P]}-vinnare lästa</div></div>
     <div class="tile"><div class="v">${mine.filter(isRead).length} / ${mine.length}</div><div class="l">nominerade och vinnare lästa</div></div></div>
-  <div class="row"><input type="search" id="awQ" placeholder="Sök titel eller författare …" value="${esc(S.awQ)}" aria-label="Sök"></div>
+  <div class="row"><input type="search" id="awQ" placeholder="Sök titel eller författare …" value="${esc(S.awQ)}" aria-label="Sök">
+    <select id="awForm" aria-label="Form"><option value="">Romaner och kortromaner</option><option value="novel" ${form==="novel"?"selected":""}>Bara romaner</option><option value="novella" ${form==="novella"?"selected":""}>Bara kortromaner</option></select>
+    ${awYearSelect(mine.map(a=>a[P+"Year"]))}</div>
   <div class="chips">${chip("winners","Vinnare")}${chip("unread","Olästa vinnare")}${chip("all","Alla nominerade")}${chip("both","Vann båda")}${chip("bothnom","Nominerad till båda")}</div>
   <div id="results" style="display:flex;flex-direction:column;gap:16px"><p class="muted small" style="margin:0">${list.length} böcker${list.length>300?", de 300 senaste visas":""}</p>
   ${list.length?`<div class="list">${list.slice(0,300).map(a=>{ const b=findBook(a.title); return `<div class="item" ${b?`data-book="${esc(b.id)}" role="button" tabindex="0"`:`style="cursor:default"`}>
@@ -2474,6 +2479,8 @@ document.addEventListener("change", e=>{
     e.target.replaceWith(inpEl); inpEl.focus(); return;
   }
   if(id==="gcCat"){ S.gcCat=e.target.value; render(); }
+  if(id==="awYear"){ S.awYear=e.target.value; render(); }
+  if(id==="awForm"){ S.awForm=e.target.value; render(); }
   const nmap={nAvail:["avail","checked"],nLibby:["libby","value"],nSeries:["series","checked"],nLang:["lang","value"],nPages:["maxPages","value"],nKind:["kind","value"],nGender:["gender","value"],nSort:["sort","value"],nAuth:["auth","value"]};
   if(nmap[id]){ S.f[({series:"nextSer"})[nmap[id][0]]||nmap[id][0]]=e.target[nmap[id][1]]; S.pickId=null; render(); }
 });
