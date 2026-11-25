@@ -509,6 +509,13 @@ async function maybeEnrich(){
     patch.filled={...(b.filled||{}), ...Object.fromEntries(Object.keys(patch).map(k=>[k,"Open Library"]))};
     (byDoc[b._doc] ||= {})[b.id]={...((byDoc[b._doc]||{})[b.id]||{}), ...patch};
   }
+  // Series facts from Goodreads links Kitty sent: standalones are not series; two books get their Goodreads series.
+  const NOT_SERIES=[["Blind Faith","elton"],["The Edible Woman","atwood"],["Snuff","palahniuk"],["The Robber Bride","atwood"],["Home Before Dark","sager"],
+    ["Invisible Monsters","palahniuk"],["My Best Friend's Exorcism","hendrix"],["Against a Dark Background","banks"]];
+  const GR_SERIES=[["A Canticle for Leibowitz","miller","St. Leibowitz","1"],["Do Androids Dream of Electric Sheep?","dick","Blade Runner","1"]];
+  for(const b of S.books){ const t=norm(String(b.title).split(":")[0]), a=norm(b.author);
+    if(NOT_SERIES.some(([x,y])=>norm(x)===t && a.includes(y)) && !b.notSeries) put(b,{notSeries:true, wdSeries:null, ...(b.series?{series:"",num:""}:{})});
+    const gs=GR_SERIES.find(([x,y])=>norm(x)===t && a.includes(y)); if(gs && !b.series) put(b,{series:gs[2], num:gs[3], wdSeries:null}); }
   // Author names Kitty asked to have corrected.
   const AUTHOR_RENAME={"ajvide lindqvist; j":"John Ajvide Lindqvist",
     "harry martinsson":"Harry Martinson", "martinsson, harry":"Harry Martinson", "martinson, harry":"Harry Martinson", "martinsson; h":"Harry Martinson",
@@ -1025,15 +1032,9 @@ async function wikidataSeries(b){
   const d=await fetchJson("https://query.wikidata.org/sparql?format=json&query="+encodeURIComponent(q));
   const rows=(d.results&&d.results.bindings||[]);
   const r=rows.find(x=>x.sLabel && !/^Q\d+$/.test(x.sLabel.value));
-  if(r) return {name:cleanSeriesName(r.sLabel.value), num:r.ord?r.ord.value:""};
-  // No series item: a book with "follows"/"followed by" is part of a series named after its first book (e.g. Semiosis).
-  const c=rows.find(x=>x.prev||x.next); if(!c) return null;
-  const qid=c.b.value.split("/").pop();
-  const q2=`SELECT ?first ?fl ?fe (COUNT(DISTINCT ?mid) AS ?pos) WHERE { wd:${qid} wdt:P155* ?mid . ?mid wdt:P155* ?first . FILTER NOT EXISTS { ?first wdt:P155 ?x }
-    OPTIONAL { ?first rdfs:label ?fl FILTER(LANG(?fl)="${lang}") } OPTIONAL { ?first rdfs:label ?fe FILTER(LANG(?fe)="en") } } GROUP BY ?first ?fl ?fe LIMIT 1`;
-  const d2=await fetchJson("https://query.wikidata.org/sparql?format=json&query="+encodeURIComponent(q2));
-  const f=(d2.results&&d2.results.bindings||[])[0]; const nm=f&&((f.fl&&f.fl.value)||(f.fe&&f.fe.value)); if(!nm) return null;
-  return {name:nm.split(":")[0].trim(), num:f.pos?f.pos.value:""};
+  if(r) return {name:cleanSeriesName(r.sLabel.value), num:r.ord?r.ord.value:"", src:"P179"};
+  // Only "part of the series" counts. "Follows"/"followed by" in Wikidata is often just the author's previous/next book.
+  return null;
 }
 let seriesRun=false;
 // Names written "Efternamn I" (e.g. "Power R", "Power, R."): look up the book's title on Open Library and use the full name
@@ -1058,6 +1059,12 @@ async function findFullNames(){
   if(Object.keys(patches).length && await batchUpdate(patches) && done.length) toast("Rättade författarnamn: "+done.join(", "));
   fullNameRun=false;
 }
+// Missing parts from Goodreads series pages Kitty sent (shown in the Inkorg for approval like the Wikidata ones).
+const GR_GAPS={
+  "St. Leibowitz|2|gr":{series:"St. Leibowitz", title:"Saint Leibowitz and the Wild Horse Woman", author:"Walter M. Miller Jr.", num:"2", year:"1997", release:"", lang:"Engelska", src:"Goodreads"},
+  "Blade Runner|2|gr":{series:"Blade Runner", title:"Blade Runner 2: The Edge of Human", author:"K. W. Jeter", num:"2", year:"1995", release:"", lang:"Engelska", src:"Goodreads"},
+  "Blade Runner|3|gr":{series:"Blade Runner", title:"Blade Runner 3: Replicant Night", author:"K. W. Jeter", num:"3", year:"1996", release:"", lang:"Engelska", src:"Goodreads"},
+  "Blade Runner|4|gr":{series:"Blade Runner", title:"Blade Runner 4: Eye and Talon", author:"K. W. Jeter", num:"4", year:"2000", release:"", lang:"Engelska", src:"Goodreads"}};
 // Mark dead authors once, from Wikidata (free, runs in the browser). Only when every writer with that exact name has a date of death.
 let deadRun=false;
 async function findDeadAuthors(){
@@ -1090,13 +1097,13 @@ async function findDeadAuthors(){
 }
 async function findSeries(){
   if(seriesRun || !S.db || !S.loaded) return; seriesRun=true;
-  const need=b=>!seriesOf(b) && !b.seriesTried2 && !b.wdSeries && b.title && b.author && phase(b)!=="dnf";
+  const need=b=>!seriesOf(b) && !b.notSeries && !b.seriesTried3 && ((!b.seriesTried2 && !b.wdSeries) || (b.seriesTried2 && b.wdSeries && !b.wdSeries.src)) && b.title && b.author && phase(b)!=="dnf";
   const all=S.books.filter(need); const todo=all.sort((a,b)=>(b.num?1:0)-(a.num?1:0)).slice(0,60);
   S.serProgress={left:all.length}; if(location.hash==="#stada") render();
   const patches={};
   for(const b of todo){
     let r=null; try{ r=await wikidataSeries(b); }catch(_){ break; }
-    patches[b.id]= r ? {wdSeries:r, seriesTried:true, seriesTried2:true} : {seriesTried:true, seriesTried2:true};
+    patches[b.id]= r ? {wdSeries:r, seriesTried:true, seriesTried2:true, seriesTried3:true} : {wdSeries:null, seriesTried:true, seriesTried2:true, seriesTried3:true};
     S.serProgress={left:Math.max(0,S.serProgress.left-1)};
     if(Object.keys(patches).length%15===0){ await batchUpdate(patches); for(const k in patches) delete patches[k]; }
     await new Promise(res=>setTimeout(res,1100));
@@ -1111,7 +1118,7 @@ async function findSeries(){
 let gapRun=false;
 async function findSeriesGaps(){
   if(gapRun || !S.db || !S.loaded || S.isOwner===false) return; gapRun=true;
-  const cs=S.docs.cleanState||{}; const chk=cs.serChecked||{}; const today=todayISO();
+  const cs=S.docs.cleanState||{}; const chk=cs.serChecked2||{}; const today=todayISO();
   const old=d=>!d || (Date.parse(today)-Date.parse(d))/864e5>30;
   const groups=seriesGroups().filter(g=>!isAbandoned(g.name) && old(chk[g.name.toLowerCase()])).slice(0,24);
   const checked={}, gaps={};
@@ -1121,7 +1128,6 @@ async function findSeriesGaps(){
     const vals=Object.keys(varOf).length?part.flatMap(g=>seriesNameVariants(g.name).flatMap(v=>["en","sv","mul"].map(l=>JSON.stringify(v)+"@"+l))).join(" "):"";
     const q=`SELECT ?name ?m ?ord ?date ?parts ?te ?ts ?al WHERE { VALUES ?name { ${vals} }
       { ?s rdfs:label ?name . ?st ps:P179 ?s . ?m p:P179 ?st . OPTIONAL { ?st pq:P1545 ?ord } OPTIONAL { ?s wdt:P1114 ?parts } }
-      UNION { ?first rdfs:label ?name . ?first wdt:P156 ?n2 . FILTER NOT EXISTS { ?first wdt:P155 ?x } ?first wdt:P156* ?m . }
       OPTIONAL { ?m wdt:P577 ?date } OPTIONAL { ?m rdfs:label ?te FILTER(LANG(?te)="en") } OPTIONAL { ?m rdfs:label ?ts FILTER(LANG(?ts)="sv") }
       OPTIONAL { ?m wdt:P50 ?a . ?a rdfs:label ?al FILTER(LANG(?al)="en") } }`;
     let d; try{ d=await fetchJson("https://query.wikidata.org/sparql?format=json&query="+encodeURIComponent(q)); }catch(_){ break; }
@@ -1150,7 +1156,7 @@ async function findSeriesGaps(){
     await new Promise(r=>setTimeout(r,1100));
   }
   if(Object.keys(checked).length){
-    const upd={serChecked:checked}; if(Object.keys(gaps).length) upd.serGaps=gaps;
+    const upd={serChecked2:checked}; if(Object.keys(gaps).length) upd.serGaps2=gaps;
     try{ await queued("cleanState",()=>S.db.doc("lib/cleanState").update(upd)); cleanProposals._r=null;
       const n=Object.keys(gaps).length; if(n){ render(); toast(n+(n===1?" bok":" böcker")+" saknas i dina serier. Se Inkorgen."); } }catch(_){}
   }
@@ -1403,13 +1409,13 @@ function cleanProposals(){
     const target=(sa && full[norm(sa.last).split(" ").pop()+"|"+sa.init.toLowerCase()]) || (S.authorFix||{})[b.id];
     if(target && target!==a){ const k=a+"→"+target; (nameGroups[k] ||= {from:a,to:target,ids:[]}).ids.push(b.id); } });
   Object.values(nameGroups).forEach((g,i)=>{ const patches={}; g.ids.forEach(id=>patches[id]={author:g.to}); out.push({id:"nm"+i, key:"p:nm:"+g.from+"→"+g.to, group:"names", title:g.to, detail:"ersätter “"+g.from+"” · "+g.ids.length+(g.ids.length>1?" böcker":" bok"), patches}); });
-  S.books.filter(b=>b.wdSeries && !seriesOf(b)).forEach(b=>{ const w=b.wdSeries; const nm=fixSeriesName(w.name,b.lang);
+  S.books.filter(b=>b.wdSeries && !seriesOf(b) && !b.notSeries && (b.wdSeries.src==="P179" || !b.seriesTried2)).forEach(b=>{ const w=b.wdSeries; const nm=fixSeriesName(w.name,b.lang);
     out.push({id:"wd"+b.id, key:"p:wd:"+b.id, group:"wdseries", title:b.title, detail:`${nm}${(b.num||w.num)?" #"+firstNum(b.num||w.num):""} (Wikidata)`, patches:{[b.id]:{series:nm, num:firstNum(b.num||w.num||"")}}, bookId:b.id}); });
-  { const SG=(S.docs.cleanState&&S.docs.cleanState.serGaps)||{}; const grp={}; seriesGroups().forEach(g=>grp[g.name.toLowerCase()]=g);
+  { const SG={...GR_GAPS, ...((S.docs.cleanState&&S.docs.cleanState.serGaps2)||{})}; const grp={}; seriesGroups().forEach(g=>grp[g.name.toLowerCase()]=g);
     Object.entries(SG).forEach(([k,x])=>{ if(!x) return; const g=grp[String(x.series).toLowerCase()]; if(g && x.title!=="?" && g.items.some(it=>norm(it.title)===norm(x.title))) return;
       if(g && x.title==="?" && g.items.some(it=>String(it.num)===String(x.num))) return;
       out.push({id:"sg:"+k, key:"p:sg:"+k, group:"sermissing", title:x.title==="?"?`${x.series} #${x.num}`:x.title,
-        detail:x.title==="?"?"Titel inte känd än (Wikidata)":`${x.series} #${x.num}${x.release?" · släpps "+fmtDate(x.release):x.year?" · "+x.year:""} · ${x.author} (Wikidata)`, patches:{}, adds:[x]}); }); }
+        detail:x.title==="?"?"Titel inte känd än (Wikidata)":`${x.series} #${x.num}${x.release?" · släpps "+fmtDate(x.release):x.year?" · "+x.year:""} · ${x.author} (${x.src||"Wikidata"})`, patches:{}, adds:[x]}); }); }
   const byA={}; S.books.forEach(b=>{ (byA[authorKey(b.author)] ||= []).push(b); });
   S.books.filter(b=>!b.gender).forEach(b=>{ const v=[...new Set((byA[authorKey(b.author)]||[]).map(x=>x.gender).filter(Boolean))];
     if(v.length===1) out.push({id:"ge"+b.id, key:"p:ge:"+b.id, group:"gender", title:b.title, detail:`${GENDER[v[0]]||v[0]}, som dina andra böcker av ${b.author}`, patches:{[b.id]:{gender:v[0]}}, bookId:b.id}); });
