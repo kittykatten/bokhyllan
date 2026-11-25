@@ -502,6 +502,10 @@ async function maybeEnrich(){
     patch.filled={...(b.filled||{}), ...Object.fromEntries(Object.keys(patch).map(k=>[k,"Open Library"]))};
     (byDoc[b._doc] ||= {})[b.id]={...((byDoc[b._doc]||{})[b.id]||{}), ...patch};
   }
+  // Author names Kitty asked to have corrected.
+  const AUTHOR_RENAME={"ajvide lindqvist; j":"John Ajvide Lindqvist"};
+  for(const b of S.books){ const to=AUTHOR_RENAME[String(b.author||"").replace(/\s+/g," ").trim().toLowerCase()]; if(to) (byDoc[b._doc] ||= {})[b.id]={...((byDoc[b._doc]||{})[b.id]||{}), author:to}; }
+  for(const [from,to] of Object.entries(AUTHOR_RENAME)){ const P=S.authorPref||{}, ok=authorKey(from), nk=authorKey(to); if(P[ok] && !P[nk]){ try{ await queued("authors",()=>S.db.doc("lib/authors").update({pref:{[nk]:P[ok]}})); S.authorPref={...P,[nk]:P[ok]}; }catch(_){} } }
   for(const x of S.series){ if(!x.series) continue; const fx=fixSeriesName(x.series,x.lang); if(fx!==x.series) (byDoc[x._doc] ||= {})[x.id]={series:fx}; }
   for(const [doc,items] of Object.entries(byDoc)){
     try{ await queued(doc, ()=>S.db.doc("lib/"+doc).update({items})); }catch(_){}
