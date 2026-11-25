@@ -1181,12 +1181,12 @@ async function watchAuthors(){
   let found={}, checked={}, total=0;
   const save=async()=>{ if(!Object.keys(checked).length) return; const upd={watchChecked:checked}; if(Object.keys(found).length) upd.watch=found;
     try{ await queued("cleanState",()=>S.db.doc("lib/cleanState").update(upd)); total+=Object.keys(found).length; found={}; checked={}; }catch(_){} };
-  let i=0;
+  let i=0, fails=0;
   for(const [k,list] of authors){ i++;
     const name=String(list[0].author).replace(/\s+/g," ").trim();
     const orig=langName(list.map(b=>b.origLang).find(Boolean) || list.map(b=>b.lang).find(Boolean) || "");
     const want=orig==="Svenska"?["swe"]:orig==="Engelska"?["eng"]:["swe","eng"];
-    let d; try{ d=await fetchJson("https://openlibrary.org/search.json?author="+encodeURIComponent(name)+"&sort=new&limit=25&fields=key,title,first_publish_year,language,author_name,number_of_pages_median,publish_date,cover_i,subject,edition_count"); }catch(_){ break; }
+    let d; try{ d=await fetchJson("https://openlibrary.org/search.json?author="+encodeURIComponent(name)+"&sort=new&limit=25&fields=key,title,first_publish_year,language,author_name,number_of_pages_median,publish_date,cover_i,subject,edition_count"); }catch(_){ fails++; if(fails>=5) break; await new Promise(r=>setTimeout(r,2000)); continue; }
     checked[k]=today;
     for(const w of d.docs||[]){
       if(!(w.author_name||[]).some(a=>authorKey(a)===k)) continue;
@@ -1209,7 +1209,7 @@ async function watchAuthors(){
     await new Promise(r=>setTimeout(r,700));
   }
   await save(); S.watchProgress=null; S.watchDone={authors:authors.length, found:total}; render();
-  if(authors.length) toast(total?total+(total===1?" ny bok":" nya böcker")+" av dina författare. Se Inkorgen.":"Bevakningen är klar: inga nya böcker i dag.");
+  if(authors.length) toast(fails>=5?"Open Library svarar inte just nu. Försök igen senare.":total?total+(total===1?" ny bok":" nya böcker")+" av dina författare. Se Inkorgen.":"Bevakningen är klar: inga nya böcker i dag.");
   watchRun=false;
 }
 // Mark dead authors once, from Wikidata (free, runs in the browser). Only when every writer with that exact name has a date of death.
