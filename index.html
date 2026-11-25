@@ -256,7 +256,9 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const num = v => { const n = parseFloat(String(v ?? "").replace(/[\s,]/g,"").replace("%","")); return isFinite(n) ? n : 0; };
 const truthy = v => /^(true|yes|ja|x|1)$/i.test(String(v ?? "").trim());
-const norm = s => String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9åäö]+/g," ").trim();
+const norm0 = s => String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9åäö]+/g," ").trim();
+// Apostrophes are dropped, so "Old Mans War" and "Old Man's War" are the same title.
+const norm = s => norm0(String(s||"").replace(/['’‘`´]/g,""));
 const todayISO = () => { const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
 const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
 function toast(msg){ const t=$("#toast"); t.textContent=msg; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true,2600); }
@@ -350,7 +352,7 @@ function oldNumLabel(n){ n=String(n||"").trim(); if(!n) return ""; const m=n.mat
 const MORE_LABELS=["","Aldrig mer","Knappast","Kanske","Troligen","Absolut"];
 // "(red)" and similar mean an anthology without one author: never counted or asked about as an author.
 function noAuthor(a){ return /^\(?\s*(red|red\.|redaktör|redaktörer|ed|eds|editor|various|div|div\.|diverse|okänd|anonym|anonymous)\s*\)?$/i.test(String(a||"").trim()) || !String(a||"").trim(); }
-function authorKey(a){ return norm(String(a||"").replace(/\s+/g," ")); }
+function authorKey(a){ return norm0(String(a||"").replace(/\s+/g," ")); }   // unchanged key: saved author answers use it
 function relDate(b){ const r=String(b.release||""); if(/^\d{4}-\d{2}-\d{2}$/.test(r)) return r; const a=String(b.added||""); return /^\d{4}-\d{2}-\d{2}$/.test(a)&&a>todayISO()?a:""; }
 function isUnreleased(b){ const r=relDate(b); if(r) return r>todayISO(); return +b.year>new Date().getFullYear(); }
 const BACKLOG_DAYS=730;
@@ -1092,6 +1094,8 @@ const FIXED_SERIES=[
   {match:/^silo|^wool/, author:"howey", name:"Silo", author_full:"Hugh Howey", books:[["1","Wool","2012",["Silo","Wool Omnibus"]],["2","Shift","2013",["Skift"]],["3","Dust","2013",["Stoft"]]]},
   {match:/^creep/, author:"hillier", name:"Creep", author_full:"Jennifer Hillier", books:[["1","Creep","2011",[]],["2","Freak","2012",[]]]},
   {match:/inheritance/, author:"jemisin", name:"The Inheritance Trilogy", author_full:"N. K. Jemisin", books:[["1","The Hundred Thousand Kingdoms","2010",[]],["2","The Broken Kingdoms","2010",[]],["3","The Kingdom of Gods","2011",[]]]},
+  {match:/odyss/, author:"clarke", name:"Space Odyssey", author_full:"Arthur C. Clarke", books:[["1","2001: A Space Odyssey","1968",["2001 – En rymdodyssé","2001: En rymdodyssé","2001"]],
+    ["2","2010: Odyssey Two","1982",["2010 – Andra rymdodyssén","2010"]],["3","2061: Odyssey Three","1987",["2061 – Tredje rymdodyssén","2061"]],["4","3001: The Final Odyssey","1997",["3001 – Sista rymdodyssén","3001"]]]},
   {match:/mumin|moomin/, author:"jansson", name:"Mumintrollen", author_full:"Tove Jansson", lang:"Svenska", books:[
     ["1","Småtrollen och den stora översvämningen","1945",["The Moomins and the Great Flood"]],["2","Kometen kommer","1946",["Kometjakten","Mumintrollet och kometen","Comet in Moominland"]],
     ["3","Trollkarlens hatt","1948",["Finn Family Moomintroll"]],["4","Muminpappans memoarer","1950",["Muminpappans bravader","The Exploits of Moominpappa"]],
