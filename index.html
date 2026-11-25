@@ -649,7 +649,8 @@ function rebuild(){
     if(!target) continue;
     for(const [k,v] of Object.entries(items)) if(v) target.push({...v, id:k, _doc:id});
   }
-  S.books=books; S.series=series; S.awards=mergeAwards(awards, (S.docs.cleanState&&S.docs.cleanState.awardsWd)||{}); S.gc=gcl;
+  { const cs=S.docs.cleanState||{}; const ok=cs.awardsOk||{}; const wd=cs.awardsWd||{};
+    S.books=books; S.series=series; S.awardsRaw=awards.slice(); S.awards=mergeAwards(awards, Object.fromEntries(Object.entries(wd).filter(([k])=>ok[k]))); S.gc=gcl; }
   S.plans=(S.docs.plans && S.docs.plans.months) || {};
   S.meta=S.docs.meta || null;
   S.libs=(S.docs.libraries && S.docs.libraries.list) || [];
@@ -1634,6 +1635,12 @@ function cleanProposals(){
       if(g && x.title==="?" && g.items.some(it=>String(it.num)===String(x.num))) return;
       out.push({id:"sg:"+k, key:"p:sg:"+k, group:"sermissing", title:x.title==="?"?`${x.series} #${x.num}`:x.title,
         detail:x.title==="?"?"Titel inte känd än (Wikidata)":`${x.series} #${x.num}${x.release?" · släpps "+fmtDate(x.release):x.year?" · "+x.year:""} · ${x.author} (${x.src||"Wikidata"})`, patches:{}, adds:[x]}); }); }
+  { const cs=S.docs.cleanState||{}; const ok=cs.awardsOk||{}; const by={}; (S.awardsRaw||[]).forEach(a=>by[norm(a.title)]=a);
+    const NAME={h:"Hugo",n:"Nebula"};
+    Object.entries(cs.awardsWd||{}).forEach(([k,x])=>{ if(!x || ok[k]) return; const a=by[k];
+      const news=["h","n"].filter(p=>(x[p+"Nom"]||x[p+"Win"]) && !(a && (a[p+"Win"] || (a[p+"Nom"] && !x[p+"Win"]))));
+      if(!news.length) return;
+      out.push({id:"aw:"+k, key:"p:aw:"+k, group:"awards", title:x.title, detail:news.map(p=>`${NAME[p]} ${x[p+"Win"]?"vinnare":"nominerad"} ${x[p+"Year"]}`).join(" · ")+` · ${x.novella&&!x.novel?"novell":"roman"} · ${x.author||"okänd författare"} (Wikidata)`, patches:{}, awardOk:k}); }); }
   const byA={}; S.books.forEach(b=>{ (byA[authorKey(b.author)] ||= []).push(b); });
   S.books.filter(b=>!b.gender).forEach(b=>{ const v=[...new Set((byA[authorKey(b.author)]||[]).map(x=>x.gender).filter(Boolean))];
     if(v.length===1) out.push({id:"ge"+b.id, key:"p:ge:"+b.id, group:"gender", title:b.title, detail:`${GENDER[v[0]]||v[0]}, som dina andra böcker av ${b.author}`, patches:{[b.id]:{gender:v[0]}}, bookId:b.id}); });
@@ -1661,6 +1668,9 @@ async function applyProposals(which, alsoTbr){
     for(const [id,pt] of Object.entries(p.patches)){ if(pt===null || patches[id]===null) patches[id]=null; else patches[id]={...(patches[id]||{}), ...pt}; }
     }
   if(Object.keys(ignore).length){ try{ const cur={...(S.ignoreDups||{}), ...ignore}; await queued("cleanState",()=>S.db.doc("lib/cleanState").update({ignoreDups:cur})); }catch(e){ dbFail(e); return; } }
+  const okAw=list.filter(p=>p.awardOk).map(p=>p.awardOk);
+  if(okAw.length){ try{ await queued("cleanState",()=>S.db.doc("lib/cleanState").update({awardsOk:Object.fromEntries(okAw.map(k=>[k,true]))})); cleanProposals._r=null; }catch(e){ dbFail(e); return; }
+    if(!list.some(p=>p.adds||Object.keys(p.patches||{}).length)){ toast(okAw.length+(okAw.length===1?" bok tillagd":" böcker tillagda")+" i Priser."); render(); return; } }
   const adds=list.flatMap(p=>p.adds||[]);
   if(adds.length){
     try{ for(const x of adds){
@@ -1678,7 +1688,7 @@ async function applyProposals(which, alsoTbr){
 }
 function cleanView(){
   const P=cleanProposals(); const skip=S.cleanSkip||new Set(); const g=cleanIssues(); const open=S.cleanOpen;
-  const GT={sermissing:"Böcker som saknas i dina serier", wdseries:"Serier från Wikidata", names:"Författarnamn till Förnamn Efternamn", authors:"Samma författare skriven på olika sätt", dups:"Dubbletter och omläsningar", gender:"Författarens kön saknas", lang:"Språk saknas"};
+  const GT={awards:"Nya i Hugo och Nebula", sermissing:"Böcker som saknas i dina serier", wdseries:"Serier från Wikidata", names:"Författarnamn till Förnamn Efternamn", authors:"Samma författare skriven på olika sätt", dups:"Dubbletter och omläsningar", gender:"Författarens kön saknas", lang:"Språk saknas"};
   const ch=S.dupChoice||{};
   const active=P.filter(p=>p.group==="dups"?!!ch[p.id]:!skip.has(p.id));
   const recLine=b=>{ const p=phase(b); const where=b.kind==="novella"?"från Novella-fliken":b.kind==="removed"?"från Removed-fliken":"";
@@ -2322,7 +2332,7 @@ function hnView(P){
     <div><div class="t">${esc(a.title)}</div><div class="a">${authorLink(a.author)}${a.novella?" · novell":""}</div>
       <div class="row" style="margin-top:4px;gap:6px">${badge(a,P)}${badge(a,O,true)}</div></div>
     <div class="r">${isRead(a)?`<span class="pill ph-read">Läst</span>`:b?`<span class="pill ph-tbr">På listan</span>`:""}</div></div>`; }).join("")}</div>`:`<div class="empty">Inget matchar.</div>`}</div>
-  <p class="muted small">Nya års nominerade och vinnare hämtas från Wikidata en gång i månaden.</p>`;
+  <p class="muted small">Nya års nominerade och vinnare hämtas från Wikidata en gång i månaden och läggs i Inkorgen för godkännande.</p>`;
 }
 
 /* --- next book --- */
