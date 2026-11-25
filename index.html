@@ -348,6 +348,8 @@ function firstNum(n){ const m=String(n||"").trim().match(/^\d+(?:[.,]\d+)?(?:-\d
 function numLabel(n){ n=firstNum(n); return n ? "#"+n : ""; }
 function oldNumLabel(n){ n=String(n||"").trim(); if(!n) return ""; const m=n.match(/^(\d+(?:-\d+)?)\/(\d+|\?)$/); return m ? "#"+m[1]+" av "+m[2] : "#"+n; }
 const MORE_LABELS=["","Aldrig mer","Knappast","Kanske","Troligen","Absolut"];
+// "(red)" and similar mean an anthology without one author: never counted or asked about as an author.
+function noAuthor(a){ return /^\(?\s*(red|red\.|redaktör|redaktörer|ed|eds|editor|various|div|div\.|diverse|okänd|anonym|anonymous)\s*\)?$/i.test(String(a||"").trim()) || !String(a||"").trim(); }
 function authorKey(a){ return norm(String(a||"").replace(/\s+/g," ")); }
 function relDate(b){ const r=String(b.release||""); if(/^\d{4}-\d{2}-\d{2}$/.test(r)) return r; const a=String(b.added||""); return /^\d{4}-\d{2}-\d{2}$/.test(a)&&a>todayISO()?a:""; }
 function isUnreleased(b){ const r=relDate(b); if(r) return r>todayISO(); return +b.year>new Date().getFullYear(); }
@@ -375,7 +377,7 @@ const PREF_LABEL={ja:"Ja",kanske:"Kanske",nej:"Nej",vetej:"Vet ej",avliden:"Avli
 function isDeadAuthor(name){ const k=authorKey(name); return (S.authorPref||{})[k]==="avliden"; }
 function authorMore(){
   const m={}; const cnt={};
-  S.books.forEach(b=>{ if(phase(b)==="read") cnt[authorKey(b.author)]=(cnt[authorKey(b.author)]||0)+1; });
+  S.books.forEach(b=>{ if(phase(b)==="read" && !noAuthor(b.author)) cnt[authorKey(b.author)]=(cnt[authorKey(b.author)]||0)+1; });
   for(const [k,n] of Object.entries(cnt)) if(n>=10) m[k]=5;
   for(const [k,v] of Object.entries(S.authorPref||{})) if(PREF_VAL[v]) m[k]=PREF_VAL[v];
   S.books.filter(b=>b.moreAuthor && String(b.read||"")>=RATING_FROM).sort((a,b)=>String(a.read||"").localeCompare(String(b.read||""))).forEach(b=>{ m[authorKey(b.author)]=+b.moreAuthor; });
@@ -514,7 +516,7 @@ async function maybeEnrich(){
     "power r":"Rory Power", "power r.":"Rory Power", "power, r":"Rory Power", "power, r.":"Rory Power", "power; r":"Rory Power"};
   for(const b of S.books){ const to=AUTHOR_RENAME[String(b.author||"").replace(/\s+/g," ").trim().toLowerCase()]; if(to) (byDoc[b._doc] ||= {})[b.id]={...((byDoc[b._doc]||{})[b.id]||{}), author:to}; }
   // Authors Kitty said are dead: mark as Avliden (matched on surname, Martinson with one or two s).
-  const DEAD_NAMED={"asimov|i":"1992", "martinson|h":"1978", "martinson|m":"1964", "heinlein|r":"1988"}; const dp={}, dd={};
+  const DEAD_NAMED={"asimov|i":"1992", "martinson|h":"1978", "martinson|m":"1964", "heinlein|r":"1988", "banks|i":"2013", "huxley|a":"1963"}; const dp={}, dd={};
   for(const b of S.books){ const raw=String(b.author||"").replace(/\s+/g," ").trim(); const name=AUTHOR_RENAME[raw.toLowerCase()]||raw; const k=authorKey(name);
     const sa=splitAuthor(name); if(!sa) continue; const y=DEAD_NAMED[norm(sa.last).split(" ").pop()+"|"+sa.init.toLowerCase()];
     if(y && (S.authorPref||{})[k]!=="avliden"){ dp[k]="avliden"; dd[k]=y; } }
@@ -1599,12 +1601,12 @@ function noMoreSection(){
 }
 function authorPrefList(){
   const P=S.authorPref||{}; const by={};
-  S.books.forEach(b=>{ const k=authorKey(b.author); if(!k) return; const p=phase(b); const e=(by[k] ||= {name:String(b.author).replace(/\s+/g," ").trim(), read:0, left:0}); if(p==="read") e.read++; else if(p==="tbr"||p==="reading") e.left++; });
+  S.books.forEach(b=>{ const k=authorKey(b.author); if(!k || noAuthor(b.author)) return; const p=phase(b); const e=(by[k] ||= {name:String(b.author).replace(/\s+/g," ").trim(), read:0, left:0}); if(p==="read") e.read++; else if(p==="tbr"||p==="reading") e.left++; });
   return Object.entries(by).filter(([k,e])=>e.read>0 && e.read<10 && !P[k]).sort((a,b)=>b[1].read-a[1].read||a[1].name.localeCompare(b[1].name,"sv"));
 }
 function authorStats(){
   const by={};
-  S.books.forEach(b=>{ const k=authorKey(b.author); if(!k) return; const p=phase(b); const e=(by[k] ||= {name:String(b.author).replace(/\s+/g," ").trim(), read:0, left:0}); if(p==="read") e.read++; else if(p==="tbr"||p==="reading") e.left++; });
+  S.books.forEach(b=>{ const k=authorKey(b.author); if(!k || noAuthor(b.author)) return; const p=phase(b); const e=(by[k] ||= {name:String(b.author).replace(/\s+/g," ").trim(), read:0, left:0}); if(p==="read") e.read++; else if(p==="tbr"||p==="reading") e.left++; });
   return by;
 }
 function authorPrefRow(k,e,cur){
@@ -1808,7 +1810,7 @@ function statsView(){
   const dec=b=>{ const y=+b.year; if(!y) return ""; if(y<1920) return "före 1920"; return Math.floor(y/10)*10+"-talet"; };
   const decEntries = tally(base,dec,20).sort((a,b)=>(a[0]==="före 1920"?0:parseInt(a[0]))-(b[0]==="före 1920"?0:parseInt(b[0])));
   const gl=GENDER;
-  const DIM={author:b=>String(b.author||"").replace(/\s+/g," ").trim(), lang:b=>langName(b.lang), orig:b=>langName(b.origLang), gender:b=>gl[b.gender]||"", dec, genre:b=>genresOf(b), source:b=>b.source, rating:b=>ratingOf(b)?String(Math.round(ratingOf(b))):""};
+  const DIM={author:b=>noAuthor(b.author)?"":String(b.author||"").replace(/\s+/g," ").trim(), lang:b=>langName(b.lang), orig:b=>langName(b.origLang), gender:b=>gl[b.gender]||"", dec, genre:b=>genresOf(b), source:b=>b.source, rating:b=>ratingOf(b)?String(Math.round(ratingOf(b))):""};
   const T={author:"Författare", rec:"Rekord", lang:"Språk jag läste på", orig:"Originalspråk", gender:"Författarens kön", dec:"Utgivningsdecennium", genre:"Genre", source:"Källa", rating:"Betyg", rated:"Betygsatta böcker "+sel};
   // Records. Days are counted inclusive (start and finish the same day = 1 day).
   const ISOd=/^\d{4}-\d{2}-\d{2}$/; const dd=(a,b)=>Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/864e5);
