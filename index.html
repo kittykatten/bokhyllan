@@ -1421,7 +1421,7 @@ function cleanProposals(){
     out.push({id:"wd"+b.id, key:"p:wd:"+b.id, group:"wdseries", title:b.title, detail:`${nm}${(b.num||w.num)?" #"+firstNum(b.num||w.num):""} (Wikidata)`, patches:{[b.id]:{series:nm, num:firstNum(b.num||w.num||"")}}, bookId:b.id}); });
   { const SG={...GR_GAPS, ...((S.docs.cleanState&&S.docs.cleanState.serGaps3)||{})}; const grp={}; seriesGroups().forEach(g=>grp[g.name.toLowerCase()]=g);
     const grNum=new Set(Object.values(GR_GAPS).map(x=>norm(x.series)+"|"+x.num));
-    Object.entries(SG).forEach(([k,x])=>{ if(!x) return; if(!GR_GAPS[k] && grNum.has(norm(x.series)+"|"+x.num)) return; const g=grp[String(x.series).toLowerCase()]; if(g && x.title!=="?" && g.items.some(it=>norm(it.title)===norm(x.title))) return;
+    Object.entries(SG).forEach(([k,x])=>{ if(!x || isAbandoned(x.series)) return; if(!GR_GAPS[k] && grNum.has(norm(x.series)+"|"+x.num)) return; const g=grp[String(x.series).toLowerCase()]; if(g && x.title!=="?" && g.items.some(it=>norm(it.title)===norm(x.title))) return;
       if(g && x.title==="?" && g.items.some(it=>String(it.num)===String(x.num))) return;
       out.push({id:"sg:"+k, key:"p:sg:"+k, group:"sermissing", title:x.title==="?"?`${x.series} #${x.num}`:x.title,
         detail:x.title==="?"?"Titel inte känd än (Wikidata)":`${x.series} #${x.num}${x.release?" · släpps "+fmtDate(x.release):x.year?" · "+x.year:""} · ${x.author} (${x.src||"Wikidata"})`, patches:{}, adds:[x]}); }); }
