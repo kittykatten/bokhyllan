@@ -448,6 +448,9 @@ const GENDER={K:"Kvinna",M:"Man",B:"Blandat"};
 const KIND={bok:"Roman",novella:"Novell",removed:"Roman"};
 const HIDE_EXTRA=/^(sf|a|b|bi|pi|adl\.?|bok\.?|adlibris|bokus)$/i;
 const LIBBY={ja:"📚 Finns i Libby",nej:"Finns inte i Libby",notify:"🔔 Notify i Libby"};
+// Libby filter: "ja" (finns, EPUB or unknown format), "notify", "nej", "okand" (not filled in).
+function libbyMatch(b,v){ if(v===true||v==="ja") return b.libby==="ja" && isEpubOrUnknown(b); if(v==="okand") return !b.libby; return b.libby===v; }
+function libbySelect(v){ return `<select id="nLibby" aria-label="Libby"><option value="">Libby: alla</option>${[["ja","📚 Finns i Libby"],["notify","🔔 Notify i Libby"],["nej","Finns inte i Libby"],["okand","Libby: vet inte"]].map(([k,l])=>`<option value="${k}" ${v===k||(v===true&&k==="ja")?"selected":""}>${l}</option>`).join("")}</select>`; }
 function adlibrisUrl(b){ return "https://www.adlibris.com/se/sok?q="+encodeURIComponent((b.title||"")+" "+(b.author||"")); }
 function coverHtml(b, big){
   const cls="cover"+(big?" big":"");
@@ -935,7 +938,7 @@ function filteredBooks(){
   let list=S.books.filter(b=>{
     if(phase(b)==="dnf") return false;
     if(f.avail && !AVAILABLE.includes(b.status)) return false;
-    if(f.libby && !(b.libby==="ja" && isEpubOrUnknown(b))) return false;
+    if(f.libby && !libbyMatch(b,f.libby)) return false;
     if(f.genre && !genresOf(b).includes(f.genre)) return false;
     if(f.lang && langName(b.lang)!==f.lang) return false;
     if(f.maxPages && !(+b.pages && +b.pages<=+f.maxPages)) return false;
@@ -1001,7 +1004,7 @@ function moreFilters(f){
       <div class="chips"><button class="chip" data-ng="" aria-pressed="${!f.genre}">Alla genrer</button>${GENRES.map(gchip).join("")}</div>
       <div class="row small">
         <label class="row" style="gap:6px"><input type="checkbox" id="nAvail" ${f.avail?"checked":""}> Har tillgång till nu</label>
-        <label class="row" style="gap:6px"><input type="checkbox" id="nLibby" ${f.libby?"checked":""}> Finns i Libby</label>
+        ${libbySelect(f.libby)}
         <label class="row" style="gap:6px"><input type="checkbox" id="nSeries" ${f.nextSer?"checked":""}> Nästa del i påbörjade serier</label>
       </div>
       <div class="row small">
@@ -2283,7 +2286,7 @@ function nextView(){
   const langs=[...new Set(S.books.filter(b=>phase(b)==="tbr"||phase(b)==="reading").map(b=>langName(b.lang)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"sv"));
   let list=S.books.filter(b=>phase(b)==="tbr");
   if(n.avail) list=list.filter(b=>AVAILABLE.includes(b.status));
-  if(n.libby) list=list.filter(b=>b.libby==="ja" && isEpubOrUnknown(b));
+  if(n.libby) list=list.filter(b=>libbyMatch(b,n.libby));
   if(n.genre) list=list.filter(b=>genresOf(b).includes(n.genre));
   if(n.lang) list=list.filter(b=>langName(b.lang)===n.lang);
   if(n.maxPages) list=list.filter(b=>+b.pages && +b.pages<=+n.maxPages);
@@ -2309,7 +2312,7 @@ function nextView(){
     <div class="chips"><button class="chip" data-ng="" aria-pressed="${!n.genre}">Alla genrer</button>${GENRES.map(gchip).join("")}</div>
     <div class="row small">
       <label class="row" style="gap:6px"><input type="checkbox" id="nAvail" ${n.avail?"checked":""}> Bara sådant jag har tillgång till nu</label>
-      <label class="row" style="gap:6px"><input type="checkbox" id="nLibby" ${n.libby?"checked":""}> Bara sådant som finns i Libby</label>
+      ${libbySelect(n.libby)}
       <label class="row" style="gap:6px"><input type="checkbox" id="nSeries" ${n.series?"checked":""}> Bara nästa del i påbörjade serier</label>
     </div>
     <div class="row small">
@@ -2417,7 +2420,7 @@ document.addEventListener("change", e=>{
     e.target.replaceWith(inpEl); inpEl.focus(); return;
   }
   if(id==="gcCat"){ S.gcCat=e.target.value; render(); }
-  const nmap={nAvail:["avail","checked"],nLibby:["libby","checked"],nSeries:["series","checked"],nLang:["lang","value"],nPages:["maxPages","value"],nKind:["kind","value"],nGender:["gender","value"],nSort:["sort","value"],nAuth:["auth","value"]};
+  const nmap={nAvail:["avail","checked"],nLibby:["libby","value"],nSeries:["series","checked"],nLang:["lang","value"],nPages:["maxPages","value"],nKind:["kind","value"],nGender:["gender","value"],nSort:["sort","value"],nAuth:["auth","value"]};
   if(nmap[id]){ S.f[({series:"nextSer"})[nmap[id][0]]||nmap[id][0]]=e.target[nmap[id][1]]; S.pickId=null; render(); }
 });
 document.addEventListener("keydown", e=>{
