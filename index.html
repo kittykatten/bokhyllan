@@ -1357,8 +1357,11 @@ async function findCovers(){
 let pagesRun=false;
 async function findPages(){
   if(pagesRun || !S.db || !S.loaded) return; pagesRun=true;
-  const stale=v=>!v || v===true || (typeof v==="string" && (Date.parse(todayISO())-Date.parse(v))/864e5>30);   // true = tried before retries existed
-  const todo=S.books.filter(b=>!b.pages && stale(b.pagesTried) && b.title && phase(b)!=="dnf").slice(0,30);
+  // Older books: one search (plus one more with Google Books for books searched before it was added). New and coming books
+  // (this or last year): again after 30 days, since the sources often add them some time after publication.
+  const Yn=+todayISO().slice(0,4); const isNew=b=>(+b.year>=Yn-1) || isUnreleased(b);
+  const stale=b=>{ const v=b.pagesTried; return !v || v===true || (isNew(b) && typeof v==="string" && (Date.parse(todayISO())-Date.parse(v))/864e5>30); };
+  const todo=S.books.filter(b=>!b.pages && stale(b) && b.title && phase(b)!=="dnf").slice(0,30);
   const patches={};
   for(const b of todo){
     let pages=0;
