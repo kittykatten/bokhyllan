@@ -1162,6 +1162,52 @@ const GR_GAPS={
   "Blade Runner|2|gr":{series:"Blade Runner", title:"Blade Runner 2: The Edge of Human", author:"K. W. Jeter", num:"2", year:"1995", release:"", lang:"Engelska", src:"Goodreads"},
   "Blade Runner|3|gr":{series:"Blade Runner", title:"Blade Runner 3: Replicant Night", author:"K. W. Jeter", num:"3", year:"1996", release:"", lang:"Engelska", src:"Goodreads"},
   "Blade Runner|4|gr":{series:"Blade Runner", title:"Blade Runner 4: Eye and Talon", author:"K. W. Jeter", num:"4", year:"2000", release:"", lang:"Engelska", src:"Goodreads"}};
+// Book watch: new and coming books by authors you said Ja to (or 10+ read), from Open Library (free, in the browser).
+// Coming books and books first published in the last 12 months. Authors who write in Swedish or English: only that
+// language. Other original languages: Swedish or English editions. Each author is checked at most once a day.
+let watchRun=false;
+async function watchAuthors(){
+  if(watchRun || !S.db || !S.loaded || S.isOwner===false) return; watchRun=true;
+  const cs=S.docs.cleanState||{}; const chk=cs.watchChecked||{}; const today=todayISO(); const Y=+today.slice(0,4);
+  const yearAgo=new Date(Date.now()-365*864e5).toISOString().slice(0,10);
+  const AM=authorMore(); const P=S.authorPref||{}; const byK={};
+  S.books.forEach(b=>{ const k=authorKey(b.author); if(!k || noAuthor(b.author) || /[,;&]| och /.test(b.author)) return; (byK[k] ||= []).push(b); });
+  const authors=Object.entries(byK).filter(([k])=>AM[k]>=5 && (!P[k] || P[k]==="ja") && chk[k]!==today).slice(0,40);
+  const have=new Set([...S.books.map(b=>nbKey(b.title)), ...S.series.map(x=>nbKey(x.title))]);
+  const SKIP=/\b(best of|collected|collection|complete|omnibus|box ?set|boxed|books? \d|trilogy|duology|stories|anthology|summary|study guide|graphic novel|colou?ring|journal|calendar|sampler|preview|excerpt|vol\.?|volume|edition|novellas?)\b/i;
+  const SKIPSUBJ=/comic|graphic novel|short stor|antholog|novella|poetry|juvenile|picture book/i;
+  const LC={eng:"engelska", swe:"svenska"};
+  const found={}, checked={};
+  for(const [k,list] of authors){
+    const name=String(list[0].author).replace(/\s+/g," ").trim();
+    const orig=langName(list.map(b=>b.origLang).find(Boolean) || list.map(b=>b.lang).find(Boolean) || "");
+    const want=orig==="Svenska"?["swe"]:orig==="Engelska"?["eng"]:["swe","eng"];
+    let d; try{ d=await fetchJson("https://openlibrary.org/search.json?author="+encodeURIComponent(name)+"&sort=new&limit=25&fields=key,title,first_publish_year,language,author_name,number_of_pages_median,publish_date,cover_i,subject,edition_count"); }catch(_){ break; }
+    checked[k]=today;
+    for(const w of d.docs||[]){
+      if(!(w.author_name||[]).some(a=>authorKey(a)===k)) continue;
+      const fy=+w.first_publish_year||0; if(fy && fy<Y-1) continue;
+      const t=String(w.title||"").trim(); if(!t || SKIP.test(t) || have.has(nbKey(t))) continue;
+      if(w.number_of_pages_median && w.number_of_pages_median<120) continue;
+      if((w.subject||[]).some(x=>SKIPSUBJ.test(x))) continue;
+      const dates=(w.publish_date||[]).map(x=>{ const ms=Date.parse(x); return /\d{1,2},? \d{4}|\d{4}-\d{2}-\d{2}/.test(x)&&!isNaN(ms)?new Date(ms+12*36e5).toISOString().slice(0,10):""; }).filter(Boolean).sort();
+      const first=dates[0]||"";
+      if(first ? first<yearAgo : fy<Y) continue;            // last year's books only with a date that shows they are within 12 months
+      const langs=(w.language||[]).filter(l=>want.includes(l));
+      if((w.language||[]).length && !langs.length) continue;
+      if(!(w.language||[]).length && want.length>1) continue;     // unknown language for a translated author: skip
+      const key="p:new:"+norm(name)+"|"+norm(t);
+      found[key]={key, author:name, title:t, year:fy||(first?+first.slice(0,4):Y), lang:want.length===1?langName(want[0]==="eng"?"Engelska":"Svenska"):(langs.includes("swe")?"Svenska":"Engelska"),
+        langs:want.length>1?langs.map(l=>LC[l]).join(" och "):"", release:first>today?first:"", pages:w.number_of_pages_median||"", src:"Open Library"};
+    }
+    await new Promise(r=>setTimeout(r,1000));
+  }
+  if(Object.keys(checked).length){
+    const upd={watchChecked:checked}; if(Object.keys(found).length) upd.watch=found;
+    try{ await queued("cleanState",()=>S.db.doc("lib/cleanState").update(upd)); const n=Object.keys(found).length; if(n){ render(); toast(n+(n===1?" ny bok":" nya böcker")+" av dina författare. Se Inkorgen."); } }catch(_){}
+  }
+  watchRun=false;
+}
 // Mark dead authors once, from Wikidata (free, runs in the browser). Only when every writer with that exact name has a date of death.
 let deadRun=false;
 async function findDeadAuthors(){
@@ -1754,8 +1800,11 @@ const NEW_BOOKS=[
 ];
 function nbKey(t){ return norm(String(t).replace(/&/g," and ")).replace(/^(the|a|an) /,""); }
 function newBookList(){
-  const IG=S.cleanIgnore||{}; const have=new Set(S.books.map(b=>nbKey(b.title)));
-  return NEW_BOOKS.map(([author,title,year,lang])=>({author,title,year,lang:lang||"Engelska",key:"p:new:"+norm(author)+"|"+norm(title)}))
+  const IG=S.cleanIgnore||{}; const have=new Set([...S.books.map(b=>nbKey(b.title)), ...S.series.map(x=>nbKey(x.title))]);
+  const W=Object.values((S.docs.cleanState&&S.docs.cleanState.watch)||{}).filter(Boolean);
+  const fixed=NEW_BOOKS.map(([author,title,year,lang])=>({author,title,year,lang:lang||"Engelska",key:"p:new:"+norm(author)+"|"+norm(title)}));
+  const seen=new Set(fixed.map(n=>n.key));
+  return fixed.concat(W.filter(n=>!seen.has(n.key) && !isDeadAuthor(n.author)))
     .filter(n=>!IG[n.key] && !IG["p:new:"+norm(n.author)+"|"+norm(n.title.replace(/&/g,"and"))] && !have.has(nbKey(n.title)));
 }
 // Books that were already over 2 years on 2026-11-24 were decided on in the sheet; only ask about books that pass 2 years after that.
@@ -1831,9 +1880,9 @@ async function setAuthorPref(k,v){
 function newBooksSection(){
   const l=newBookList(); if(!l.length) return "";
   const byA={}; l.forEach(n=>(byA[n.author] ||= []).push(n));
-  return `<div class="card"><div class="sec-h"><h3>Nya böcker av författare du läst senaste året</h3><span class="muted small">${l.length}</span></div>
-    <p class="muted small" style="margin-top:0">Lägg till det som lockar, säg nej tack till resten.</p>
-    ${Object.entries(byA).map(([a,list])=>`<div style="margin-top:10px"><b class="small">${esc(a)}</b>${list.map(n=>`<div style="padding:6px 0;border-bottom:1px solid var(--line)"><div class="row"><button type="button" class="alink grow" style="text-align:left" data-nbinfo="${esc(n.key)}" aria-expanded="${S.nbOpen===n.key}">${esc(n.title)} <span class="muted small">${n.year} · ${S.nbOpen===n.key?"dölj":"mer info"}</span></button><button class="chip" data-addnew="${esc(n.key)}">+ Lägg till</button><button class="chip" data-ignore="${esc(n.key)}">✕ Nej tack</button></div>${S.nbOpen===n.key?nbInfoHtml(n):""}</div>`).join("")}</div>`).join("")}</div>`;
+  return `<div class="card"><div class="sec-h"><h3>Nya böcker av dina författare</h3><span class="muted small">${l.length}</span></div>
+    <p class="muted small" style="margin-top:0">Lägg till det som lockar, säg nej tack till resten. Bevakningen söker i Open Library efter nya och kommande böcker av författare du svarat Ja på, en gång per dag när appen är öppen.</p>
+    ${Object.entries(byA).map(([a,list])=>`<div style="margin-top:10px"><b class="small">${esc(a)}</b>${list.map(n=>`<div style="padding:6px 0;border-bottom:1px solid var(--line)"><div class="row"><button type="button" class="alink grow" style="text-align:left" data-nbinfo="${esc(n.key)}" aria-expanded="${S.nbOpen===n.key}">${esc(n.title)} <span class="muted small">${n.release&&n.release>todayISO()?"släpps "+esc(fmtDate(n.release)):n.year}${n.langs?" · "+esc(n.langs):""} · ${S.nbOpen===n.key?"dölj":"mer info"}</span></button><button class="chip" data-addnew="${esc(n.key)}">+ Lägg till</button><button class="chip" data-ignore="${esc(n.key)}">✕ Nej tack</button></div>${S.nbOpen===n.key?nbInfoHtml(n):""}</div>`).join("")}</div>`).join("")}</div>`;
 }
 // Details for a suggested book, from Open Library (free, no key). Cached per session.
 function nbInfoHtml(n){
@@ -1864,7 +1913,8 @@ async function addNewBook(key){
   const n=newBookList().find(x=>x.key===key); if(!n) return;
   const like=S.books.find(b=>authorKey(b.author)===authorKey(n.author)) || S.books.find(b=>norm(b.author).split(" ").pop()===norm(n.author).split(" ").pop());
   const item={kind:"bok", title:n.title, author:n.author, gender:(like&&like.gender)||"", lang:n.lang, origLang:n.lang==="Svenska"?"Svenska":((like&&like.origLang)||n.lang), year:n.year, pages:"",
-    status:"", source:"", format:"", started:"", read:"", due:"", comment:"", series:"", num:"", rating:0, extra:{}, genres:(like&&like.genres)||[], ratingForm:{}, moreAuthor:0, added:todayISO(), libby:"", loaned:""};
+    status:"", source:"", format:"", started:"", read:"", due:"", comment:"", series:"", num:"", rating:0, extra:{}, genres:(like&&like.genres)||[], ratingForm:{}, moreAuthor:0, added:todayISO(), libby:"", loaned:"", release:n.release&&n.release>todayISO()?n.release:""};
+  if(n.pages && !item.pages) item.pages=n.pages;
   const inf=(S.nbInfo||{})[key]; if(inf&&!inf.err){ if(inf.pages) item.pages=inf.pages; if(inf.cover) item.coverUrl="https://covers.openlibrary.org/b/id/"+inf.cover+"-M.jpg"; }
   try{ await putItem("books", uid("b"), item); toast(n.title+" ligger nu bland Att läsa."); }catch(_){}
 }
@@ -2496,7 +2546,7 @@ function startData(){
     S.docs=docs; rebuild();
     if(!snap.metadata.fromCache){ S.loaded=true; clearTimeout(timer); }
     else if(Object.keys(docs).length) S.loaded=true;
-    if(S.loaded){ maybeEnrich(); setTimeout(findCovers, 4000); setTimeout(findSeries, 9000); setTimeout(findPages, 15000); setTimeout(findDeadAuthors, 6000); setTimeout(findFullNames, 3000); setTimeout(findSeriesGaps, 5000); }
+    if(S.loaded){ maybeEnrich(); setTimeout(findCovers, 4000); setTimeout(findSeries, 9000); setTimeout(findPages, 15000); setTimeout(findDeadAuthors, 6000); setTimeout(findFullNames, 3000); setTimeout(findSeriesGaps, 5000); setTimeout(watchAuthors, 7000); }
     if(S.edit && S.edit.id){ const fresh=S.books.find(b=>b.id===S.edit.id); if(fresh) S.edit._doc=fresh._doc; }
     render();
   }, err=>{ clearTimeout(timer); S.loaded=true; S.error="Kunde inte läsa databasen ("+((err&&err.code)||"fel")+")."; render(); });
