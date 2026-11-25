@@ -573,6 +573,7 @@ async function maybeEnrich(){
   const GR_SERIES=[["We Chase Shadows","osman","We Solve Murders","2",352],["We Solve Murders","osman","We Solve Murders","1"],["A Canticle for Leibowitz","miller","St. Leibowitz","1"],["Do Androids Dream of Electric Sheep?","dick","Blade Runner","1"]];
   for(const b of S.books){ const t=norm(String(b.title).split(":")[0]), a=norm(b.author);
     if(NOT_SERIES.some(([x,y])=>norm(x)===t && a.includes(y)) && !b.notSeries) put(b,{notSeries:true, wdSeries:null, ...(b.series?{series:"",num:""}:{})});
+    if(!b.pages){ const pf=pagesFix(b.title,b.author); if(pf) put(b,{pages:pf, filled:{...(b.filled||{}), pages:"Goodreads"}}); }
     const gs=GR_SERIES.find(([x,y])=>norm(x)===t && a.includes(y)); if(gs && !b.series) put(b,{series:gs[2], num:gs[3], wdSeries:null}); if(gs && gs[4] && !b.pages) put(b,{pages:gs[4], filled:{...(b.filled||{}), pages:"Goodreads"}}); }
   // Silo and The Handmaid's Tale: remove rows that are TV episodes/seasons (came in from Wikidata). Only these exact titles.
   const TV_ROWS=new Set(["A Dark Web", "A Woman's Place", "After", "Allegiance", "Baggage", "Ballet", "Barricades", "Birth Day", "Border", "Chicago", "Dear Offred", "Descent", "Devotion", "Execution", "Exile", "Exodus", "Fairytale", "Faithful", "Farewell", "First Blood", "Freedom Day", "God Bless the Child", "Gray Goo", "Hanna", "Heroic", "Holly", "Holston's Pick", "Home", "Household", "Into the Fire", "It's All Good", "Janine", "Jezebels", "June", "Late", "Liars", "Machines", "Mary and Martha", "Mayday", "Memory", "Milk", "Morning", "Motherland", "Night", "Nightshade", "No Man’s Land", "Nolite Te Bastardes Carborundorum", "Offred", "Order", "Other Women", "Outside", "Pigs", "Postpartum", "Progress", "Promotion", "Radio", "Sacrifice", "Safe", "Seeds", "Shattered", "Silo, season 1", "Silo, season 2", "Silo, season 3", "Smart Power", "Solo", "Surprise", "Testimony", "The Book of Quinn", "The Bridge", "The Crossing", "The Dive", "The Drive", "The Engineer", "The Flamekeepers", "The Getaway", "The Handmaid's Tale, season 1", "The Handmaid's Tale, season 2", "The Handmaid's Tale, season 3", "The Handmaid's Tale, season 4", "The Handmaid's Tale, season 5", "The Handmaid's Tale, season 6", "The Harmonium", "The Janitor's Boy", "The Last Ceremony", "The Other Side", "The Relic", "The Safeguard", "The Wilderness", "The Word", "Together", "Train", "Troy", "Truth", "Under His Eye", "Unfit", "Unknown Caller", "Unwomen", "Useful", "Vows", "Whatever You Do, Don't Go Home", "Who Are You?", "Witness", "Women's Work"].map(norm));
@@ -1160,6 +1161,9 @@ const FIXED_SERIES=[
     ["8","Pappan och havet","1965",["Moominpappa at Sea"]],["9","Sent i november","1970",["Moominvalley in November"]]],
     skipNums:["7"]}];
 function fixedFor(g){ const k=String(g.name||"").trim().toLowerCase(); return FIXED_SERIES.find(f=>f.match.test(k) && (!g.author || norm(g.author).includes(f.author))); }
+// Page counts from Goodreads links Kitty sent: title|author surname → pages. Used for suggestions and books without pages.
+const PAGES_FIX={"monsters of ohio|scalzi":272, "taipei story|kuang":288, "we chase shadows|osman":352};
+function pagesFix(title,author){ const sa=splitAuthor(String(author||"")); const sur=norm(sa?sa.last:String(author||"").split(" ").pop()).split(" ").pop(); return PAGES_FIX[norm(stripNovel(title))+"|"+sur]||0; }
 // Missing parts from Goodreads series pages Kitty sent (shown in the Inkorg for approval like the Wikidata ones).
 const GR_GAPS={
   "St. Leibowitz|2|gr":{series:"St. Leibowitz", title:"Saint Leibowitz and the Wild Horse Woman", author:"Walter M. Miller Jr.", num:"2", year:"1997", release:"", lang:"Engelska", src:"Goodreads"},
@@ -1172,7 +1176,7 @@ const GR_GAPS={
 let watchRun=false;
 async function watchAuthors(){
   if(watchRun || !S.db || !S.loaded || S.isOwner===false) return; watchRun=true;
-  const cs=S.docs.cleanState||{}; const chk=cs.watchChecked2||{}; const today=todayISO(); const Y=+today.slice(0,4);
+  const cs=S.docs.cleanState||{}; const chk=cs.watchChecked3||{}; const today=todayISO(); const Y=+today.slice(0,4);
   const yearAgo=new Date(Date.now()-365*864e5).toISOString().slice(0,10);
   const AM=authorMore(); const P=S.authorPref||{}; const byK={};
   S.books.forEach(b=>{ const k=authorKey(b.author); if(!k || noAuthor(b.author) || /[,;&]| och /.test(b.author)) return; (byK[k] ||= []).push(b); });
@@ -1183,19 +1187,20 @@ async function watchAuthors(){
   const SKIPSUBJ=/comic|graphic novel|short stor|antholog|novella|poetry|juvenile|picture book/i;
   const LC={eng:"engelska", swe:"svenska"};
   let found={}, checked={}, total=0;
-  const save=async()=>{ if(!Object.keys(checked).length) return; const upd={watchChecked2:checked}; if(Object.keys(found).length) upd.watch2=found;
+  const save=async()=>{ if(!Object.keys(checked).length) return; const upd={watchChecked3:checked}; if(Object.keys(found).length) upd.watch3=found;
     try{ await queued("cleanState",()=>S.db.doc("lib/cleanState").update(upd)); total+=Object.keys(found).length; found={}; checked={}; }catch(_){} };
   let i=0, fails=0;
   for(const [k,list] of authors){ i++;
     const name=String(list[0].author).replace(/\s+/g," ").trim();
     const orig=langName(list.map(b=>b.origLang).find(Boolean) || list.map(b=>b.lang).find(Boolean) || "");
     const want=orig==="Svenska"?["swe"]:orig==="Engelska"?["eng"]:["swe","eng"];
-    let d; try{ d=await fetchJson("https://openlibrary.org/search.json?author="+encodeURIComponent(name)+"&sort=new&limit=25&fields=key,title,first_publish_year,language,author_name,number_of_pages_median,publish_date,cover_i,subject,edition_count,subtitle"); }catch(_){ fails++; if(fails>=5) break; await new Promise(r=>setTimeout(r,2000)); continue; }
+    let d; try{ d=await fetchJson("https://openlibrary.org/search.json?author="+encodeURIComponent(name)+"&sort=new&limit=25&fields=key,title,first_publish_year,language,author_name,number_of_pages_median,publish_date,cover_i,subject,edition_count,subtitle,isbn"); }catch(_){ fails++; if(fails>=5) break; await new Promise(r=>setTimeout(r,2000)); continue; }
     checked[k]=today;
     for(const w of d.docs||[]){
       if(!(w.author_name||[]).some(a=>authorKey(a)===k)) continue;
       if(new Set((w.author_name||[]).map(authorKey)).size>=3) continue;     // anthologies: Open Library lists the editors as authors
       if(w.subtitle && SKIP.test(w.subtitle)) continue;
+      if((w.isbn||[]).length && (w.isbn||[]).every(x=>/^9798/.test(x)) && !w.number_of_pages_median) continue;   // self-published, no page count
       const fy=+w.first_publish_year||0; if(fy && fy<Y-1) continue;
       const t=stripNovel(String(w.title||"").trim()); if(!t || SKIP.test(t) || have.has(nbKey(t)) || !titleLangOk(t,want)) continue;
       if(w.number_of_pages_median && w.number_of_pages_median<120) continue;
@@ -1846,11 +1851,11 @@ function stripNovel(t){ return String(t||"").replace(/\s*[:\-–—(]\s*(a|an)\s
 function nbKey(t){ return norm(stripNovel(t).replace(/&/g," and ")).replace(/^(the|a|an) /,""); }
 function newBookList(){
   const IG=S.cleanIgnore||{}; const have=new Set([...S.books.map(b=>nbKey(b.title)), ...S.series.map(x=>nbKey(x.title))]);
-  const W=Object.values((S.docs.cleanState&&S.docs.cleanState.watch2)||{}).filter(Boolean);
+  const W=Object.values((S.docs.cleanState&&S.docs.cleanState.watch3)||{}).filter(Boolean);
   const fixed=NEW_BOOKS.map(([author,title,year,lang])=>({author,title,year,lang:lang||"Engelska",key:"p:new:"+norm(author)+"|"+norm(title)}));
   const seen=new Set(fixed.map(n=>n.key));
   return fixed.concat(W.filter(n=>!seen.has(n.key) && !isDeadAuthor(n.author) && !/^we will rise again$/i.test(n.title) && !/\b(sneak peek|teaser|preview|sampler|excerpt)\b/i.test(n.title)
-      && titleLangOk(n.title, n.langs?["swe","eng"]:n.lang==="Svenska"?["swe"]:["eng"])).map(n=>({...n, title:stripNovel(n.title)})))
+      && titleLangOk(n.title, n.langs?["swe","eng"]:n.lang==="Svenska"?["swe"]:["eng"])).map(n=>({...n, title:stripNovel(n.title), pages:n.pages||pagesFix(n.title,n.author)||""})))
     .filter(n=>!IG[n.key] && !IG["p:new:"+norm(n.author)+"|"+norm(n.title.replace(/&/g,"and"))] && !have.has(nbKey(n.title)));
 }
 // Books that were already over 2 years on 2026-11-24 were decided on in the sheet; only ask about books that pass 2 years after that.
@@ -2500,7 +2505,7 @@ document.addEventListener("click", async e=>{
         else reads.splice(+d.i,1);
         reads.sort((x,y)=>String(x.read).localeCompare(String(y.read)));
         if(await batchUpdate({[b.id]:{reads}})){ b.reads=reads; renderModal(); toast(d.act==="addread"?"Läsningen är tillagd.":"Läsningen är borttagen."); } return; }
-      case "watchnow": { if(watchRun){ toast("Bevakningen pågår redan."); return; } const cs=S.docs.cleanState||{}; if(cs.watchChecked2) cs.watchChecked2={}; watchAuthors(); toast("Bevakningen har startat."); return; }
+      case "watchnow": { if(watchRun){ toast("Bevakningen pågår redan."); return; } const cs=S.docs.cleanState||{}; if(cs.watchChecked3) cs.watchChecked3={}; watchAuthors(); toast("Bevakningen har startat."); return; }
       case "editmeta": { readForm(); S.editMeta=!S.editMeta; renderModal(); return; }
       case "useseries": { readForm(); const sr=seriesOf(S.edit); if(sr){ S.edit.series=sr.name; if(!S.edit.num && sr.num) S.edit.num=sr.num; } renderModal(); return; }
       case "usesugg": { readForm(); const sg=genreSuggest(S.edit); if(sg) S.edit.genres=sg.list.slice(); renderModal(); return; }
