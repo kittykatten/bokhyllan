@@ -506,8 +506,17 @@ async function maybeEnrich(){
     (byDoc[b._doc] ||= {})[b.id]={...((byDoc[b._doc]||{})[b.id]||{}), ...patch};
   }
   // Author names Kitty asked to have corrected.
-  const AUTHOR_RENAME={"ajvide lindqvist; j":"John Ajvide Lindqvist"};
+  const AUTHOR_RENAME={"ajvide lindqvist; j":"John Ajvide Lindqvist",
+    "harry martinsson":"Harry Martinson", "martinsson, harry":"Harry Martinson", "martinson, harry":"Harry Martinson", "martinsson; h":"Harry Martinson",
+    "moa martinsson":"Moa Martinson", "martinsson, moa":"Moa Martinson", "martinson, moa":"Moa Martinson",
+    "asimov, isaac":"Isaac Asimov", "asimov; i":"Isaac Asimov"};
   for(const b of S.books){ const to=AUTHOR_RENAME[String(b.author||"").replace(/\s+/g," ").trim().toLowerCase()]; if(to) (byDoc[b._doc] ||= {})[b.id]={...((byDoc[b._doc]||{})[b.id]||{}), author:to}; }
+  // Authors Kitty said are dead: mark as Avliden (matched on surname, Martinson with one or two s).
+  const DEAD_NAMED={"asimov|i":"1992", "martinson|h":"1978", "martinson|m":"1964"}; const dp={}, dd={};
+  for(const b of S.books){ const raw=String(b.author||"").replace(/\s+/g," ").trim(); const name=AUTHOR_RENAME[raw.toLowerCase()]||raw; const k=authorKey(name);
+    const sa=splitAuthor(name); if(!sa) continue; const y=DEAD_NAMED[norm(sa.last).split(" ").pop()+"|"+sa.init.toLowerCase()];
+    if(y && (S.authorPref||{})[k]!=="avliden"){ dp[k]="avliden"; dd[k]=y; } }
+  if(Object.keys(dp).length){ try{ await queued("authors",()=>S.db.doc("lib/authors").update({pref:dp, dead:dd})); S.authorPref={...(S.authorPref||{}),...dp}; S.authorDead={...(S.authorDead||{}),...dd}; }catch(_){} }
   for(const [from,to] of Object.entries(AUTHOR_RENAME)){ const P=S.authorPref||{}, ok=authorKey(from), nk=authorKey(to); if(P[ok] && !P[nk]){ try{ await queued("authors",()=>S.db.doc("lib/authors").update({pref:{[nk]:P[ok]}})); S.authorPref={...P,[nk]:P[ok]}; }catch(_){} } }
   for(const x of S.series){ if(!x.series) continue; const fx=fixSeriesName(x.series,x.lang); if(fx!==x.series) (byDoc[x._doc] ||= {})[x.id]={series:fx}; }
   for(const [doc,items] of Object.entries(byDoc)){
@@ -554,7 +563,7 @@ function rebuild(){
   S.libs=(S.docs.libraries && S.docs.libraries.list) || [];
   S.abandoned=(S.docs.seriesState && S.docs.seriesState.abandoned) || {};
   S.authorPref=(S.docs.authors && S.docs.authors.pref) || {};
-  S.authorDead=(S.docs.authors && S.docs.authors.dead) || {}; S.deadChecked=(S.docs.authors && S.docs.authors.checked) || {};
+  S.authorDead=(S.docs.authors && S.docs.authors.dead) || {}; S.deadChecked=(S.docs.authors && S.docs.authors.checked2) || {};
   S.ignoreDups=(S.docs.cleanState && S.docs.cleanState.ignoreDups) || {};
   const ig=(S.docs.cleanState && S.docs.cleanState.ignore) || {};
   if(JSON.stringify(ig)!==JSON.stringify(S.cleanIgnore||{})){ S.cleanIgnore=ig; cleanIssues._r=null; cleanProposals._r=null; }
@@ -1016,21 +1025,25 @@ async function findDeadAuthors(){
   if(deadRun || !S.db || !S.loaded || S.isOwner===false) return; deadRun=true;
   const P=S.authorPref||{}, C=S.deadChecked||{}; const names={};
   S.books.forEach(b=>{ const a=String(b.author||"").replace(/\s+/g," ").trim(); const k=authorKey(a);
-    if(!a || (P[k] && P[k]!=="nej") || C[k] || / och | and |&|\/|[,;]|\(/i.test(a) || !a.includes(" ")) return; names[k]=a; });
+    if(!a || (P[k] && P[k]!=="nej") || C[k] || / och | and |&|\/|\(/i.test(a)) return;
+    const m=a.match(/^([^,;]+)[,;]\s*([^,;]+)$/); const full=m?m[2].trim()+" "+m[1].trim():a;
+    if(/[,;]/.test(full) || !full.includes(" ")) return; names[k]=full; });
   const todo=Object.entries(names).slice(0,120);
   const WRITER="wd:Q36180 wd:Q6625963 wd:Q49757 wd:Q4853732 wd:Q482980 wd:Q18844224 wd:Q1930187 wd:Q214917 wd:Q11774202 wd:Q201788 wd:Q333634 wd:Q15949613 wd:Q3589290 wd:Q1350157 wd:Q5434338";
   const dead={}, checked={}, pref={};
   for(let i=0;i<todo.length;i+=20){
     const part=todo.slice(i,i+20);
     const vals=part.flatMap(([,a])=>["mul","en","sv"].map(l=>JSON.stringify(a)+"@"+l)).join(" ");
-    const q=`SELECT ?name ?item ?dod WHERE { VALUES ?name { ${vals} } ?item rdfs:label ?name; wdt:P31 wd:Q5; wdt:P106 ?o. VALUES ?o { ${WRITER} } OPTIONAL { ?item wdt:P570 ?dod } }`;
-    let d; try{ d=await fetchJson("https://query.wikidata.org/sparql?format=json&query="+encodeURIComponent(q)); }catch(_){ break; }
-    const by={}; d.results.bindings.forEach(r=>{ const k=authorKey(r.name.value); const e=(by[k] ||= {}); e[r.item.value]=r.dod?r.dod.value.slice(0,4):(e[r.item.value]||""); });
+    const q=`SELECT ?name ?item ?dod ?o WHERE { VALUES ?name { ${vals} } ?item rdfs:label ?name . ?item wdt:P31 wd:Q5 . OPTIONAL { ?item wdt:P570 ?dod } OPTIONAL { ?item wdt:P106 ?o } }`;
+    let d; try{ d=await fetchJson("https://query.wikidata.org/sparql?format=json&query="+encodeURIComponent(q)); }catch(e){ toast("Wikidata svarade inte ("+(e&&e.message||"fel")+"). Försöker igen nästa gång."); break; }
+    const W=new Set(WRITER.split(" ").map(x=>"http://www.wikidata.org/entity/"+x.slice(3)));
+    const keyOf={}; part.forEach(([k,full])=>keyOf[authorKey(full)]=k);
+    const by={}; d.results.bindings.filter(r=>r.o && W.has(r.o.value)).forEach(r=>{ const k=keyOf[authorKey(r.name.value)]; if(!k) return; const e=(by[k] ||= {}); e[r.item.value]=r.dod?r.dod.value.slice(0,4):(e[r.item.value]||""); });
     part.forEach(([k])=>{ checked[k]=true; const ys=Object.values(by[k]||{}); if(ys.length && ys.every(Boolean)){ dead[k]=ys[0]; pref[k]="avliden"; } });
     await new Promise(res=>setTimeout(res,1100));
   }
   if(Object.keys(checked).length){
-    try{ await queued("authors",()=>S.db.doc("lib/authors").update(Object.keys(dead).length?{checked, dead, pref}:{checked}));
+    try{ await queued("authors",()=>S.db.doc("lib/authors").update(Object.keys(dead).length?{checked2:checked, dead, pref}:{checked2:checked}));
       S.deadChecked={...C,...checked}; S.authorDead={...(S.authorDead||{}),...dead}; S.authorPref={...(S.authorPref||{}),...pref};
       const n=Object.keys(dead).length; if(n){ render(); toast(n+(n===1?" författare markerad":" författare markerade")+" som avliden (Wikidata)."); } }catch(_){}
   }
