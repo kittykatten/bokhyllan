@@ -4,6 +4,30 @@ Bokhyllan: https://kittykatten.github.io/bokhyllan/
 
 Versionsnumret syns längst ner under **Mer**. Nya önskemål samlas i [TODO.md](TODO.md) och släpps som en större version. Buggfixar släpps direkt som v1.0.1, v1.0.2 och så vidare.
 
+## v1.1 – 27 november 2026
+
+**Hem på datorn**
+- Ny ruta i översta raden: Läsmål, med grön, gul eller röd markering och länk till Plan. Visar "Inte satta än" tills målen finns.
+- Läser nu är en remsa över hela bredden. Vid omslaget: sidor, utgivningsår, serie och lånedatum när boken är lånad. Sex uppgifter på fasta platser: dag (och snitt per bok), när du är klar i din takt, tid på listan innan du började, vilken bok av författaren det är, vilket nummer i år och i månaden, och läsmål.
+- Knapparna Läst klart och Gav upp direkt på Hem.
+- Tre kolumner under: Plan för den här månaden, Plan för nästa månad, Lån och köer.
+
+**Hem i mobilen**
+- Enklare startsida: en statusrad, Läser nu med knappar, månadens olästa planböcker med Börja, Att hålla koll på (lån och köer i datumordning) och knapparna Ny bok, Sök och Slumpa nästa.
+
+**Köer**
+- Nytt fält Väntetid (veckor) för böcker i kö. Appen visar ett beräknat datum, till exempel "I kö · ca 8 jan (6 v)", och sorterar kön efter det. Pausade köer får inget datum.
+- Knappen Lånad på köade böcker gör om dem till lån med dagens datum.
+
+**Plan**
+- Kort för Läsmål överst, där målen kommer att visas.
+
+**Mindre ikoner**
+- Text i stället för ✓, ✕, + och ▶ på knappar, och ingen klocka före "på listan". Slumpa, Sök nya böcker nu, Libby-symbolerna i Böcker och ⏳/🎉 vid utgivning är kvar.
+
+**Buggfixar**
+- Markera som läst idag, Börja läsa idag och Lånad idag sparade inte alltid dagens datum när datumfältet syntes i bokvyn.
+
 ## v1.0 – 27 november 2026
 
 Första versionen. Bokhyllan flyttade från arket och claude.ai till en egen app med data i Firebase.
