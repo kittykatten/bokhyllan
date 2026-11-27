@@ -2481,7 +2481,8 @@ document.addEventListener("change", e=>{
   if(id==="statYear"){ S.statYear=+e.target.value; render(); }
   if(id==="e_release" && S.edit && /^\d{4}-\d{2}-\d{2}$/.test(e.target.value.trim())){ const a=$("#e_added"); if(a && !S.edit.read && !S.edit.started) a.value=e.target.value.trim(); }
   if((id==="e_format"||id==="e_source"||id==="e_loaned"||id==="e_status") && S.edit && e.target.value!=="__new"){ readForm(); const b=S.edit;
-    if(id==="e_status"){ if(isBok(b) && (b.status==="Köpt"||b.status==="Lånad")) b.source=b.status; if(!isBok(b) && b.status==="Lokal fil") b.source="Lokal fil"; }
+    if(id==="e_status"){ if(isBok(b) && (b.status==="Köpt"||b.status==="Lånad")) b.source=b.status; if(!isBok(b) && b.status==="Lokal fil") b.source="Lokal fil";
+      if(b.status==="Lånad" && !b.loaned){ b.loaned=todayISO(); toast("Lånedatum satt till idag. Ändra det om du lånade tidigare."); } }
     if(id==="e_format" && b.source && !sourceOpts({...b,source:""}).includes(b.source) && ["Köpt","Lånad","Lokal fil"].includes(b.source)) b.source="";
     renderModal(); return; }
   if(e.target.dataset && e.target.dataset.pick && e.target.value==="__new"){
