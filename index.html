@@ -102,6 +102,8 @@ input[type=search]{flex:1;min-width:180px}
 .tile.click{cursor:pointer} .tile.click:hover{border-color:var(--accent)}
 .drop-over{outline:2px dashed var(--accent);outline-offset:2px;background:var(--accent-soft)}
 [draggable="true"]{cursor:grab}
+.touch-only{display:none}
+@media (hover:none){.touch-only{display:inline-flex}}
 .recs{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
 .rec{border:1px solid var(--line);border-radius:10px;padding:10px 12px} .rec[data-drill]{cursor:pointer} .rec[data-drill]:hover{border-color:var(--accent)}
 .rec .t{font-weight:600;margin:2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1433,6 +1435,10 @@ async function batchUpdate(patches){
   for(const [doc,items] of Object.entries(byDoc)){ try{ await queued(doc, ()=>S.db.doc("lib/"+doc).update({items})); }catch(e){ dbFail(e); return false; } }
   return true;
 }
+// A row on Hem that can be dragged to "Läser nu" (computer), with a ▶ Börja button on touch screens.
+function dragRow(b, sub){ const p=phase(b); if(p!=="tbr") return miniRow(b,sub);
+  return miniRow(b,sub).replace('<div class="mini"',`<div class="mini" draggable="true" data-dragbook="${esc(b.id)}" data-dragtitle="${esc(b.title)}"`)
+    .replace(/<\/div>$/,`<button class="chip touch-only" data-act="startbook" data-id="${esc(b.id)}" title="Börja läsa idag" style="align-self:center;margin-left:auto;flex:none">▶ Börja</button></div>`); }
 function miniRow(b, sub){ return `<div class="mini" data-book="${esc(b.id)}" role="button" tabindex="0">${coverHtml(b)}<div><div class="t">${esc(b.title)}</div><div class="s">${sub}</div></div></div>`; }
 
 /* --- home --- */
@@ -1462,12 +1468,12 @@ function homeView(){
     <div class="card" data-drop="reading"><div class="sec-h"><h3>Läser nu</h3><span class="muted small">${reading.length}</span></div>
       ${reading.length?reading.map(b=>miniRow(b,`${authorLink(b.author)} · började ${esc(fmtDate(b.started))}${LOAN_ST.includes(b.status)&&b.due?" · "+dueTxt(b):""}`)).join(""):`<p class="muted small">Inget just nu. <a href="#bocker">Hitta nästa bok</a></p>`}</div>
     <div class="card"><div class="sec-h"><h3>Plan för ${MON_SV_LONG[M]}</h3><a href="#plan" class="small">Hela planen</a></div>
-      ${plan.length?plan.map(it=>{ const b=findBook(it.title); const p=b?phase(b):"tbr"; return b?miniRow(b,`<span class="dot ph-${p}" style="display:inline-block"></span> ${PHASE_LABEL[p]}`).replace('<div class="mini"',`<div class="mini" draggable="${p==="tbr"}" data-dragbook="${esc(b.id)}" data-dragtitle="${esc(it.title)}"`):`<div class="mini"><span class="cover ph">${esc(it.title.charAt(0))}</span><div><div class="t">${esc(it.title)}</div><div class="s">Finns inte i listan</div></div></div>`; }).join(""):`<p class="muted small">Inget planerat. <a href="#plan">Planera månaden</a></p>`}</div>
+      ${plan.length?plan.map(it=>{ const b=findBook(it.title); const p=b?phase(b):"tbr"; return b?dragRow(b,`<span class="dot ph-${p}" style="display:inline-block"></span> ${PHASE_LABEL[p]}`):`<div class="mini"><span class="cover ph">${esc(it.title.charAt(0))}</span><div><div class="t">${esc(it.title)}</div><div class="s">Finns inte i listan</div></div></div>`; }).join(""):`<p class="muted small">Inget planerat. <a href="#plan">Planera månaden</a></p>`}</div>
     <div class="card" style="border-style:dashed"><div class="sec-h"><h3>Läsmål ${Y+1}</h3></div>
       <p class="muted small" style="margin:0">Inga mål satta än. Här visas hur det går mot dina läsmål från januari ${Y+1}.</p></div>
     <div class="card"><div class="sec-h"><h3>${loans.length?"Lån och köer":"I kö"}</h3><span class="muted small">${holds.length+loans.length}</span></div>
-      ${loans.length?`<div class="small muted" style="margin:2px 0 4px">Lånade, inte påbörjade</div>${loans.map(b=>miniRow(b,dueTxt(b))).join("")}<div class="small muted" style="margin:10px 0 0">Köer</div>`:""}
-      ${holds.length?Object.entries(holdsByLib).map(([lib,list])=>`<div class="muted small" style="margin-top:6px">${esc(lib)} · ${list.length}${(()=>{const l=S.libs.find(x=>norm(x.name)===norm(lib));return l&&l.holds?" av "+l.holds+" köplatser":"";})()}</div>${list.map(b=>miniRow(b,esc(b.status==="On hold"?"I kö":b.status==="Suspended"?"Pausad kö":b.status))).join("")}`).join(""):`<p class="muted small">Inga köer.</p>`}</div>
+      ${loans.length?`<div class="small muted" style="margin:2px 0 4px">Lånade, inte påbörjade</div>${loans.map(b=>dragRow(b,dueTxt(b))).join("")}<div class="small muted" style="margin:10px 0 0">Köer</div>`:""}
+      ${holds.length?Object.entries(holdsByLib).map(([lib,list])=>`<div class="muted small" style="margin-top:6px">${esc(lib)} · ${list.length}${(()=>{const l=S.libs.find(x=>norm(x.name)===norm(lib));return l&&l.holds?" av "+l.holds+" köplatser":"";})()}</div>${list.map(b=>dragRow(b,esc(b.status==="On hold"?"I kö":b.status==="Suspended"?"Pausad kö":b.status))).join("")}`).join(""):`<p class="muted small">Inga köer.</p>`}</div>
   </div>`;
 }
 
@@ -2560,6 +2566,7 @@ document.addEventListener("click", async e=>{
         reads.sort((x,y)=>String(x.read).localeCompare(String(y.read)));
         if(await batchUpdate({[b.id]:{reads}})){ b.reads=reads; renderModal(); toast(d.act==="addread"?"Läsningen är tillagd.":"Läsningen är borttagen."); } return; }
       case "watchnow": { if(watchRun){ toast("Bevakningen pågår redan."); return; } watchAuthors(true); toast("Sökningen har startat."); return; }
+      case "startbook": { const b=S.books.find(x=>x.id===d.id); if(b && !b.started && await batchUpdate({[b.id]:{started:todayISO(), dropped:null}})) toast("Du läser nu "+b.title+"."); return; }
       case "editmeta": { readForm(); S.editMeta=!S.editMeta; renderModal(); return; }
       case "useseries": { readForm(); const sr=seriesOf(S.edit); if(sr){ S.edit.series=sr.name; if(!S.edit.num && sr.num) S.edit.num=sr.num; } renderModal(); return; }
       case "usesugg": { readForm(); const sg=genreSuggest(S.edit); if(sg) S.edit.genres=sg.list.slice(); renderModal(); return; }
