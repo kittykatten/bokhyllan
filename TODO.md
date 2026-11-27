@@ -3,6 +3,7 @@
 Arbetssätt: nya önskemål samlas här och släpps som en större version (v1.1, v1.2 …). Buggfixar släpps direkt.
 
 ## Till v1.2
+- Inkorgen: visa datum för senaste sökningen efter nya böcker (både automatisk och manuell).
 - Bokvyn: visa inte betygsrutan på böcker som inte är lästa.
 - Bokvyn: Tidigare läst och Lägg till läsning flyttas in under ✎ Redigera (används sällan, statistiken från 2014 finns redan).
 

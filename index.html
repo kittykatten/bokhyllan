@@ -1536,7 +1536,8 @@ function homeView(){
     ${queueCard}
   </div></div>`;
   // Phone: what you do on the go. Status line, what you read, this month's unread plan, loans and queues, quick buttons.
-  const planLeft=plan.map(it=>findBook(it.title)).filter(b=>b && phase(b)==="tbr");
+  const planLeft=plan.map(it=>findBook(it.title)).filter(b=>b && ["tbr","reading"].includes(phase(b)));
+  const planMissing=plan.filter(it=>!findBook(it.title));
   const watch=[...loans.map(b=>({b,key:b.due||"9",sub:dueTxt(b)})), ...holds.map(b=>({b,key:holdEst(b)||(b.status==="Suspended"?"99":"98"),sub:holdText(b)}))].sort((x,y)=>String(x.key).localeCompare(String(y.key)));
   const mobile=`<div class="only-mobile">
     <div class="card" style="padding:12px 14px"><div class="row small" style="gap:10px;flex-wrap:wrap"><span><b>${yb}</b> böcker ${Y}</span><span class="muted">·</span><span>${gs?`<span class="gdot" style="background:${gs.color}"></span>Läsmål ${esc(gs.word.toLowerCase())}`:"Läsmål "+gy+": inte satta än"}</span><a href="#statistik" class="small" style="margin-left:auto">Statistik ›</a></div></div>
@@ -1544,9 +1545,11 @@ function homeView(){
     <div class="card" data-drop="reading"><div class="sec-h"><h3>Läser nu</h3></div>
       ${reading.length?reading.map(b=>`${miniRow(b,`${authorLink(b.author)} · började ${esc(fmtDate(b.started))}${LOAN_ST.includes(b.status)&&b.due?" · tillbaka "+esc(fmtDate(b.due)):""}`)}<div class="row" style="gap:8px;margin:8px 0 4px"><button class="chip" data-act="homefinish" data-id="${esc(b.id)}">Läst klart</button><button class="chip" data-act="homedrop" data-id="${esc(b.id)}">Gav upp</button></div>`).join(""):`<p class="muted small" style="margin:0">Inget just nu.</p>`}</div>
     <div class="card"><div class="sec-h"><h3>Plan för ${MON_SV_LONG[M]}</h3><a href="#plan" class="small">Hela planen ›</a></div>
-      ${planLeft.length?planLeft.map(b=>dragRow(b,`${PHASE_LABEL.tbr}${b.pages?" · "+b.pages+" s.":""}`)).join(""):`<p class="muted small" style="margin:0">${plan.length?"Allt i planen är läst.":"Inget planerat."}</p>`}
+      ${planLeft.map(b=>phase(b)==="reading"?miniRow(b,`Läser${b.pages?" · "+b.pages+" s.":""}`):dragRow(b,`${PHASE_LABEL.tbr}${b.pages?" · "+b.pages+" s.":""}`)).join("")}
+      ${planMissing.map(it=>`<div class="mini"><span class="cover ph">${esc(it.title.charAt(0))}</span><div><div class="t">${esc(it.title)}</div><div class="s">Finns inte i listan</div></div></div>`).join("")}
+      ${!planLeft.length&&!planMissing.length?`<p class="muted small" style="margin:0">${plan.length?"Allt i planen är läst.":"Inget planerat."}</p>`:""}
       <div class="small muted" style="margin-top:8px">${planRead} av ${plan.length} lästa · <a href="#plan">${MON_SV_LONG[nd.getMonth()].charAt(0).toUpperCase()+MON_SV_LONG[nd.getMonth()].slice(1)}: ${plan2.length} ${plan2.length===1?"bok":"böcker"} ›</a></div></div>
-    ${watch.length?`<div class="card"><div class="sec-h"><h3>Att hålla koll på</h3></div>${watch.slice(0,4).map(x=>HOLD_ST.includes(x.b.status)?holdRow(x.b,x.sub):dragRow(x.b,x.sub)).join("")}${watch.length>4?`<div class="small muted" style="margin-top:8px"><a href="#bibliotek">${watch.length-4} till ›</a></div>`:""}</div>`:""}
+    ${watch.length?`<div class="card"><div class="sec-h"><h3>${loans.length?"Lån och köer":"I kö"}</h3><span class="muted small">${watch.length}</span></div>${watch.slice(0,4).map(x=>HOLD_ST.includes(x.b.status)?holdRow(x.b,x.sub):dragRow(x.b,x.sub)).join("")}${watch.length>4?`<div class="small muted" style="margin-top:8px"><a href="#bibliotek">${watch.length-4} till ›</a></div>`:""}</div>`:""}
     <div class="row" style="gap:8px;flex-wrap:wrap"><button class="chip" data-act="new">Ny bok</button><a class="chip" href="#bocker" style="text-decoration:none;color:inherit">Sök</a><a class="chip" href="#bocker" data-act="gopick" style="text-decoration:none;color:inherit">🎲 Slumpa nästa</a></div>
   </div>`;
   return desktop+mobile;
@@ -1554,7 +1557,7 @@ function homeView(){
 
 /* --- more --- */
 // Keep in step with VERSION in sw.js. Shown under Mer so you can check you have the latest.
-const APP_VERSION = "v1.1 (b2)";
+const APP_VERSION = "v1.1.1 (b3)";
 function moreView(){
   const n=cleanProposals().length+newBookList().length+backlogAsk().length+noMoreAsk().reduce((n,[,l])=>n+l.length,0);
   const it=(h,t,d)=>`<a href="#${h}"><b>${t}</b><span>${d}</span></a>`;

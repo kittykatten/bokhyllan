@@ -4,6 +4,12 @@ Bokhyllan: https://kittykatten.github.io/bokhyllan/
 
 Versionsnumret syns längst ner under **Mer**. Nya önskemål samlas i [TODO.md](TODO.md) och släpps som en större version. Buggfixar släpps direkt som v1.0.1, v1.0.2 och så vidare.
 
+## v1.1.1 – 27 november 2026
+
+**Buggfixar**
+- Hem i mobilen: Plan för månaden visar också böcker du läser och böcker som inte finns i listan. Den sa "Allt i planen är läst" fast det inte var det.
+- Hem i mobilen: kortet med lån och köer heter Lån och köer (eller I kö), som på datorn.
+
 ## v1.1 – 27 november 2026
 
 **Hem på datorn**
