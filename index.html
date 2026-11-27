@@ -1478,6 +1478,8 @@ function homeView(){
 }
 
 /* --- more --- */
+// Keep in step with VERSION in sw.js. Shown under Mer so you can check you have the latest.
+const APP_VERSION = "v1.0 (b1)";
 function moreView(){
   const n=cleanProposals().length+newBookList().length+backlogAsk().length+noMoreAsk().reduce((n,[,l])=>n+l.length,0);
   const it=(h,t,d)=>`<a href="#${h}"><b>${t}</b><span>${d}</span></a>`;
@@ -1489,7 +1491,8 @@ function moreView(){
     ${it("bortvalda","Bortvalda",`Böcker du har flyttat från listan (${S.books.filter(b=>phase(b)==="dnf").length})`)}
     ${it("import","Säkerhetskopia","Ladda ner allt som en fil, eller läs in från fil")}
   </div>
-  <div class="card row" style="margin-top:8px"><span class="grow small">Inloggad som <b>${esc(S.authUser&&S.authUser.email||"")}</b></span><button class="btn" data-act="logout">Logga ut</button></div>`;
+  <div class="card row" style="margin-top:8px"><span class="grow small">Inloggad som <b>${esc(S.authUser&&S.authUser.email||"")}</b></span><button class="btn" data-act="logout">Logga ut</button></div>
+  <p class="muted small">Bokhyllan ${APP_VERSION} · <a href="https://github.com/kittykatten/bokhyllan/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Versionshistorik</a></p>`;
 }
 
 /* --- libraries --- */

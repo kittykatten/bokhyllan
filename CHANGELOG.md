@@ -1,0 +1,59 @@
+# Versionshistorik
+
+Bokhyllan: https://kittykatten.github.io/bokhyllan/
+
+Versionsnumret syns längst ner under **Mer**. Nya önskemål samlas i [TODO.md](TODO.md) och släpps som en större version. Buggfixar släpps direkt som v1.0.1, v1.0.2 och så vidare.
+
+## v1.0 – 27 november 2026
+
+Första versionen. Bokhyllan flyttade från arket och claude.ai till en egen app med data i Firebase.
+
+**Grunden**
+- Inloggning med Google, data i Firebase, installeras som app i mobilen.
+- Arket är inte längre huvudkälla. Det finns kvar orört.
+- Säkerhetskopia under Mer.
+
+**Hem**
+- Läser nu, Plan för månaden, Läsmål 2027 (tomt än) och Lån och köer.
+- Dra en bok från Plan eller Lån och köer till Läser nu. På telefonen finns knappen ▶ Börja.
+- Påminnelser när en bok släpps om en vecka eller idag.
+- Hur lång tid det tar att läsa hela listan, med beräknat slutdatum.
+- Bokhyllan i övre vänstra hörnet leder till Hem.
+
+**Böcker**
+- Visar alla böcker som standard. Flikar: Att läsa, Läser, Kommande, Backlog, Lästa, Alla.
+- Filter för genre, språk, sidor, kön, nästa del i serie och Libby (finns, notify, finns inte, vet inte).
+- Sortering Bäst förslag först och knappen 🎲 Slumpa.
+- Etiketten ⏱ tid på listan.
+
+**Bokvyn**
+- Fasta uppgifter bakom ✎ Redigera, Goodreads-länk på faktaraden.
+- Format, status och källa hänger ihop. Status Lånad fyller i lånedatum, och appen räknar ut när boken ska tillbaka.
+- Knappar: Lånad idag, Börja läsa idag, Markera som läst idag, Flytta från listan med anledning, val av planmånad.
+- Flera tidigare läsningar kan läggas till och tas bort.
+- Datum visas med den exakthet som finns: år till och med 2015, månad till augusti 2023, därefter hela datumet.
+
+**Serier**
+- Status per bok: Läst, Läser, På listan, Bortvald eller Inte på listan. Titlar som inte finns hos dig länkar till Goodreads, och + På listan lägger till med ett klick.
+- Saknade delar föreslås i Inkorgen, från Wikidata eller fasta listor från Goodreads.
+- Wikidata räknas bara när boken uttryckligen är del av en serie. Tv-avsnitt, noveller, antologier och onumrerade sidoberättelser hoppas över.
+- Avbrutna serier och fristående böcker i samma värld får inga förslag.
+
+**Författare**
+- Läsa mer av författaren: Ja, Kanske, Nej, Vet ej eller Avliden. Avlidna markeras via Wikidata.
+- ✎ Byt namn på författarsidan. Felstavade och förkortade namn rättas.
+- Böcker du lägger till själv påverkas aldrig av svaret om författaren.
+
+**Inkorg**
+- Allt som hittas automatiskt hamnar här för godkännande, aldrig direkt i en lista.
+- Bokbevakning: nya och kommande böcker av Ja-författare från Open Library, en gång i veckan från måndag. Knappen Sök nya böcker nu finns också.
+- Saknade seriedelar, serieförslag, nya i Hugo och Nebula, dubbletter, författarnamn och frågor om böcker som legat länge.
+
+**Priser**
+- Hugo, Nebula och Goodreads Choice som egna flikar.
+- Filter för år, roman eller novell, Vann båda och Nominerad till båda.
+- Hugo och Nebula uppdateras från Wikidata en gång i månaden.
+
+**Statistik**
+- Romaner och noveller för sig, jämförelse med samma tid förra året. Allt går att klicka på.
+- Rekord, Mest lästa författare och kortet Listan per år: tillagda, lästa, borttagna, listans storlek och hur slutdatumet har ändrats.
