@@ -4,6 +4,14 @@ Bokhyllan: https://kittykatten.github.io/bokhyllan/
 
 Versionsnumret syns längst ner under **Mer**. Nya önskemål samlas i [TODO.md](TODO.md) och släpps som en större version. Buggfixar släpps direkt som v1.0.1, v1.0.2 och så vidare.
 
+## v1.1.2 – 28 november 2026
+
+**Läser nu**
+- Snitt per bok är borttaget. Det räknades på ett annat sätt än slutdatumet och gav intryck av att man låg efter.
+- I stället: hur många procent av boken du beräknas ha läst, med en tunn stapel, och beräknat slutdatum.
+- Beräkningen använder din lästakt för böcker på samma språk som den du läser.
+- Bok #43 i stället för #43.
+
 ## v1.1.1 – 27 november 2026
 
 **Buggfixar**

@@ -1472,20 +1472,29 @@ function goalCard(Y){ const gy=Math.max(Y, 2027);
 function readingInfo(b){
   const ISO=/^\d{4}-\d{2}-\d{2}$/; const today=todayISO(); const Y=today.slice(0,4), M=today.slice(0,7);
   const dd=(a,c)=>Math.round((new Date(c+"T12:00:00")-new Date(a+"T12:00:00"))/864e5);
-  const doneY=S.books.filter(x=>ISO.test(x.started||"") && ISO.test(x.read||"") && x.read>=x.started && x.started>="2023-09-01" && String(x.read).startsWith(Y));
-  const days=doneY.map(x=>dd(x.started,x.read)+1); const avgDays=days.length?Math.round(days.reduce((a,c)=>a+c,0)/days.length):null;
-  const pp=doneY.filter(x=>+x.pages>0); const pace=pp.length?pp.reduce((a,x)=>a+ +x.pages,0)/pp.reduce((a,x)=>a+dd(x.started,x.read)+1,0):null;
+  // Reading pace in pages per day, for books in the same language as this one (you read faster in Swedish than in English):
+  // the last 12 months; if fewer than 5 such books, all from Sep 2023 (exact dates); if still fewer than 3, all languages, last 12 months.
+  const exact=S.books.filter(x=>x.id!==b.id && ISO.test(x.started||"") && ISO.test(x.read||"") && x.read>=x.started && x.started>="2023-09-01" && +x.pages>0);
+  const yearAgo=addDaysISO(today,-365), lang=langName(b.lang);
+  let base=exact.filter(x=>langName(x.lang)===lang && x.read>=yearAgo);
+  if(base.length<5) base=exact.filter(x=>langName(x.lang)===lang);
+  if(base.length<3) base=exact.filter(x=>x.read>=yearAgo);
+  const pace=base.length?base.reduce((a,x)=>a+ +x.pages,0)/base.reduce((a,x)=>a+dd(x.started,x.read)+1,0):null;
   const day=ISO.test(b.started||"")?dd(b.started,today)+1:null;
-  let finish=null; if(pace && +b.pages>0 && ISO.test(b.started||"")){ const f=addDaysISO(b.started, Math.max(0,Math.ceil(+b.pages/pace)-1)); finish=f<today?"snart":"ca "+fmtDate(f); }
+  let finish=null, pct=null;
+  if(pace && +b.pages>0 && ISO.test(b.started||"")){ const total=Math.max(1,Math.ceil(+b.pages/pace)); const f=addDaysISO(b.started,total-1);
+    finish=f<today?"snart":f===today?"idag":shortDate(f); pct=Math.min(100,Math.round(day/total*100)); }
   let onList=null; if(ISO.test(b.added||"") && ISO.test(b.started||"") && b.added<b.started){ const a=new Date(b.added+"T12:00:00"), s2=new Date(b.started+"T12:00:00"); let m=(s2.getFullYear()-a.getFullYear())*12+(s2.getMonth()-a.getMonth()); if(s2.getDate()<a.getDate()) m--; onList=m<1?"under en månad":ageText(m); }
   const k=authorKey(b.author); const nth=noAuthor(b.author)?null:S.books.filter(x=>x.id!==b.id && authorKey(x.author)===k && everRead(x)).length+1;
   const {books}=monthCounts(); const yb=(books[+Y]||[]).reduce((a,c)=>a+c,0);
   const mb=S.books.filter(x=>allReads(x).some(r=>String(r).startsWith(M))).length;
-  return {day, avgDays, finish, onList, nth, yearN:yb+1, monthN:mb+1, pace};
+  return {day, pct, finish, onList, nth, yearN:yb+1, monthN:mb+1, pace};
 }
+function shortDate(iso){ const m=String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return iso; return (+m[3])+" "+MON_SV[+m[2]-1]+(m[1]===todayISO().slice(0,4)?"":" "+m[1]); }
 function readingStrip(reading, Y, M){
-  const stat=(v,l)=>`<div class="rstat">${v?`<div class="v">${v}</div><div class="small muted">${l}</div>`:""}</div>`;
-  const side=b=>{ const sr=seriesOf(b); const due=LOAN_ST.includes(b.status)&&b.due?`<div class="small muted">Lånad · tillbaka ${esc(fmtDate(b.due))}</div>`:"";
+  const stat=(v,l,extra="")=>`<div class="rstat">${v?`<div class="v">${v}</div><div class="small muted">${l}</div>${extra}`:""}</div>`;
+  const dayStat=r=>stat(r.day?"Dag "+r.day:"", r.pct!=null?r.pct+" % beräknat läst":"", r.pct!=null?`<div class="prog" style="max-width:160px"><i style="width:${r.pct}%"></i></div>`:"");
+  const side=b=>{ const sr=seriesOf(b); const due=LOAN_ST.includes(b.status)&&b.due?`<div class="small muted">Lånad · tillbaka ${esc(shortDate(b.due))}</div>`:"";
     return `<div class="rbook"><span data-book="${esc(b.id)}" role="button" tabindex="0" style="cursor:pointer">${coverHtml(b,true)}</span><div><div class="rt" data-book="${esc(b.id)}" role="button" tabindex="0">${esc(b.title)}</div><div class="small muted">${authorLink(b.author)}</div>
       <div class="small muted">${[b.pages?b.pages+" s.":"", b.year?"utgiven "+esc(b.year):""].filter(Boolean).join(" · ")}</div>${sr?`<div class="small muted">${sr.num?"Del "+esc(firstNum(sr.num))+" i ":""}${seriesLink(sr.name, sr.name)}</div>`:""}${due}
       <div class="row" style="gap:8px;margin-top:8px"><button class="chip" data-act="homefinish" data-id="${esc(b.id)}">Läst klart</button><button class="chip" data-act="homedrop" data-id="${esc(b.id)}">Gav upp</button></div></div></div>`; };
@@ -1493,11 +1502,11 @@ function readingStrip(reading, Y, M){
   const goalsOn=+todayISO().slice(0,4)>=2027 && goalStatus();
   if(reading.length===1){ const b=reading[0], r=readingInfo(b);
     return `<div class="card rstrip" data-drop="reading"><h3 style="margin:0 0 10px">Läser nu</h3><div class="rrow">${side(b)}<div class="rsep"></div>
-      <div class="rgrid">${stat(r.day?"Dag "+r.day:"", r.avgDays?"snitt "+r.avgDays+" dagar per bok":"")}${stat(r.finish||"", "klar i din takt")}${stat(r.onList||"", "på listan innan du började")}
-      ${stat(r.nth?"Din "+ordSv(r.nth):"", "bok av "+esc(b.author))}${stat("#"+r.yearN, "i år · #"+r.monthN+" i "+MON_SV_LONG[M])}${stat(goalsOn?goalsOn.text:"", goalsOn?goalsOn.sub:"")}</div></div></div>`; }
+      <div class="rgrid">${dayStat(r)}${stat(r.finish||"", "beräknat slutdatum")}${stat(r.onList||"", "på listan innan du började")}
+      ${stat(r.nth?"Din "+ordSv(r.nth):"", "bok av "+esc(b.author))}${stat("Bok #"+r.yearN, "i år · #"+r.monthN+" i "+MON_SV_LONG[M])}${stat(goalsOn?goalsOn.text:"", goalsOn?goalsOn.sub:"")}</div></div></div>`; }
   const r0=readingInfo(reading[0]);
-  return `<div class="card rstrip" data-drop="reading"><div class="sec-h"><h3>Läser nu</h3><span class="small muted">${reading.length} böcker${r0.avgDays?" · snitt "+r0.avgDays+" dagar per bok":""} · nästa klara blir #${r0.yearN} i år</span></div>
-    ${reading.map((b,i)=>{ const r=readingInfo(b); return `<div class="rrow" style="${i?"border-top:1px solid var(--line);":""}padding:10px 0">${side(b)}<div class="rsep"></div><div class="rgrid">${stat(r.day?"Dag "+r.day:"", "började "+esc(fmtDate(b.started)))}${stat(r.finish||"", "klar i din takt")}${stat(r.onList||"", "på listan innan du började")}</div></div>`; }).join("")}</div>`;
+  return `<div class="card rstrip" data-drop="reading"><div class="sec-h"><h3>Läser nu</h3><span class="small muted">${reading.length} böcker · nästa klara blir bok #${r0.yearN} i år</span></div>
+    ${reading.map((b,i)=>{ const r=readingInfo(b); return `<div class="rrow" style="${i?"border-top:1px solid var(--line);":""}padding:10px 0">${side(b)}<div class="rsep"></div><div class="rgrid">${dayStat(r)}${stat(r.finish||"", "beräknat slutdatum")}${stat(r.onList||"", "på listan innan du började")}</div></div>`; }).join("")}</div>`;
 }
 function homeView(){
   const now=new Date(); const Y=now.getFullYear(); const M=now.getMonth();
@@ -1557,7 +1566,7 @@ function homeView(){
 
 /* --- more --- */
 // Keep in step with VERSION in sw.js. Shown under Mer so you can check you have the latest.
-const APP_VERSION = "v1.1.1 (b3)";
+const APP_VERSION = "v1.1.2 (b4)";
 function moreView(){
   const n=cleanProposals().length+newBookList().length+backlogAsk().length+noMoreAsk().reduce((n,[,l])=>n+l.length,0);
   const it=(h,t,d)=>`<a href="#${h}"><b>${t}</b><span>${d}</span></a>`;
