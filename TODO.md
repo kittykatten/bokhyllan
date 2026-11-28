@@ -3,6 +3,7 @@
 Arbetssätt: nya önskemål samlas här och släpps som en större version (v1.1, v1.2 …). Buggfixar släpps direkt.
 
 ## Till v1.2
+- Läser nu: klicka på dagrutan och fyll i hur långt du har läst (procent eller sida). Visas som "40 % läst" med heldragen stapel; dagarna efter räknar appen vidare och visar "beräknat läst" med ljus stapel. Inget datum för uppdateringen visas. Beräknat slutdatum = sidor kvar delat med en blandad takt: bokens egen takt hittills och snittet för bokens språk, där bokens egen takt väger lika mycket som andelen som är läst. Läst klart sätter 100 %.
 - Inkorgen: visa datum för senaste sökningen efter nya böcker (både automatisk och manuell).
 - Bokvyn: visa inte betygsrutan på böcker som inte är lästa.
 - Bokvyn: Tidigare läst och Lägg till läsning flyttas in under ✎ Redigera (används sällan, statistiken från 2014 finns redan).
