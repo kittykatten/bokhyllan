@@ -4,7 +4,7 @@ Bokhyllan: https://kittykatten.github.io/bokhyllan/
 
 Versionsnumret syns längst ner under **Mer**. Nya önskemål samlas i [TODO.md](TODO.md) och släpps som en större version. Buggfixar släpps direkt som v1.0.1, v1.0.2 och så vidare.
 
-## v1.2 – beta (testas på https://kittykatten.github.io/bokhyllan/beta/)
+## v1.2 – 28 november 2026
 
 **Läser nu**
 - Klicka på dagrutan och fyll i hur långt du har läst, i procent eller som sida. Rutan visar "40 % läst" med heldragen stapel; dagarna efter räknar appen vidare och visar "beräknat läst" med ljus stapel.

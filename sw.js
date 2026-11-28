@@ -1,7 +1,7 @@
 // Bokhyllan service worker: the app opens fast and works offline.
 // Pages are fetched fresh when online (so updates show up), cached copies are used offline.
 // Keep in step with APP_VERSION in index.html (the build number in parentheses).
-const VERSION = "b4";
+const VERSION = "b5";
 const CACHE = "bokhyllan-" + VERSION;
 const SHELL = ["./", "index.html", "data/meta.json", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
