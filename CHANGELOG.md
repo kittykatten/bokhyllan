@@ -4,6 +4,11 @@ Bokhyllan: https://kittykatten.github.io/bokhyllan/
 
 Versionsnumret syns längst ner under **Mer**. Nya önskemål samlas i [TODO.md](TODO.md) och släpps som en större version. Buggfixar släpps direkt som v1.0.1, v1.0.2 och så vidare.
 
+## v1.2.1 – 28 november 2026
+
+**Buggfix**
+- Inkorgen: datum för senaste sökningen visas även om ingen sökning har körts sedan v1.2. Det räknas då fram ur när författarna senast söktes.
+
 ## v1.2 – 28 november 2026
 
 **Läser nu**
