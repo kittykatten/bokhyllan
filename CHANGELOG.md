@@ -4,6 +4,25 @@ Bokhyllan: https://kittykatten.github.io/bokhyllan/
 
 Versionsnumret syns längst ner under **Mer**. Nya önskemål samlas i [TODO.md](TODO.md) och släpps som en större version. Buggfixar släpps direkt som v1.0.1, v1.0.2 och så vidare.
 
+## v1.2 – beta (testas på https://kittykatten.github.io/bokhyllan/beta/)
+
+**Läser nu**
+- Klicka på dagrutan och fyll i hur långt du har läst, i procent eller som sida. Rutan visar "40 % läst" med heldragen stapel; dagarna efter räknar appen vidare och visar "beräknat läst" med ljus stapel.
+- Beräknat slutdatum räknas om från sidorna som är kvar, med en blandning av din takt i boken och ditt snitt för bokens språk. Ju mer du har läst, desto mer väger boken själv.
+- Läst klart sätter 100 %. Går även i mobilen.
+
+**Statistik**
+- Listan per år som ett kompakt kort i den lediga platsen bredvid Betyg.
+- Böcker i år delad i romaner och noveller, med var sin jämförelse mot förra året.
+
+**Inkorgen**
+- Datum för senaste sökningen efter nya böcker.
+- Rättade författarnamn och avlidna författare (Wikidata) blir förslag att godkänna i stället för att ändras direkt.
+
+**Bokvyn**
+- Betyg visas bara för lästa böcker.
+- Tidigare läst och Lägg till läsning ligger under ✎ Redigera.
+
 ## v1.1.2 – 28 november 2026
 
 **Läser nu**
